@@ -1,0 +1,7 @@
+python-igraph
+pandas>=2
+numpy
+scipy
+scikit-learn
+matplotlib
+pyarrow

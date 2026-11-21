@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Explore the direction and timing of negative-labeled links between Reddit communities.">
+<title>Conflict Atlas · AIM608</title>
+<link rel="stylesheet" href="atlas.css">
+<script defer src="atlas.js"></script>
+</head>
+<body>
+<header class="mast"><a href="./" class="wordmark"><span class="mark" aria-hidden="true"></span>Conflict Atlas</a><span class="course">AIM608 / Network Semantics</span><div class="header-actions"><span id="dataBadge" class="badge">Illustrative data</span><button id="methods">Methods</button><label class="button file-button">Load data<input id="file" type="file" accept=".json,application/json"></label></div></header>
+<main>
+  <div class="intro"><div><h1>Follow the links.</h1><p>Explore where negative-labeled links go, who sends them, and when they appear.</p></div><label class="search-label" for="search">Find a subreddit<input id="search" list="communities" placeholder="Type a subreddit name" autocomplete="off"><datalist id="communities"></datalist></label></div>
+  <p id="message" role="status" hidden></p>
+  <div class="dashboard">
+    <section class="panel map-panel" aria-labelledby="mapTitle">
+      <header class="panel-head"><div><h2 id="mapTitle">Embedding map</h2><p id="mapNote">Points represent communities in shared-user embedding space.</p></div><div class="filters" aria-label="Link direction"><button data-direction="both" aria-pressed="true">Both</button><button data-direction="out" aria-pressed="false">Outgoing</button><button data-direction="in" aria-pressed="false">Incoming</button></div></header>
+      <div class="map-area"><canvas id="map" aria-label="Reddit embedding map. Use the counterpart list to inspect any highlighted point."></canvas><span id="mapHover" class="tooltip" hidden></span></div>
+      <div class="map-footer"><span><i class="dot out"></i>Outgoing</span><span><i class="dot in"></i>Incoming</span><span><i class="dot other"></i>Other communities</span><span class="map-hint">Select a highlighted point to inspect the pair</span></div>
+    </section>
+    <aside class="panel dossier" aria-labelledby="dossierTitle">
+      <div class="panel-head"><div><h2 id="dossierTitle">Pair dossier</h2><p id="selection"></p></div></div>
+      <div class="counts"><div><span><i class="dot out"></i>Outgoing</span><strong id="outCount">0</strong></div><div><span><i class="dot in"></i>Incoming</span><strong id="inCount">0</strong></div></div>
+      <div id="pairDetail" class="pair-detail"></div>
+      <div class="listing"><h3>Counterparts <span id="listCount"></span></h3><div id="counterparts"></div></div>
+    </aside>
+    <section class="panel timeline" aria-labelledby="timeTitle">
+      <header class="panel-head"><div><h2 id="timeTitle">Negative links over time</h2><p id="range"></p></div><button id="reset">Reset dates</button></header>
+      <div class="time-area"><canvas id="time" aria-label="Monthly counts. Drag to select a range, or use the month controls below."></canvas></div>
+      <div class="date-controls"><label>Start month <input type="range" id="start"></label><label>End month <input type="range" id="end"></label></div>
+    </section>
+  </div>
+  <footer>Labels come from a text classifier. Embedding proximity reflects shared user participation.</footer>
+</main>
+<dialog id="methodsDialog"><h2>How to read the atlas</h2><p>Amber arrows show negative-labeled links sent by the selected subreddit. Violet arrows point toward it. The map highlights the strongest visible counterparts, while the list includes all counterparts in the selected period.</p><p>The timeline uses UTC months. Negative fractions in the dossier use all link rows for the specified direction as the denominator. Repeat links count separately.</p><p>Embedding positions use a two-dimensional PCA projection when SNAP data is loaded. Communities without vectors can still be explored through the timeline and list. The built-in dataset uses fictional communities and illustrative link counts.</p><form method="dialog"><button>Close</button></form></dialog>
+</body>
+</html>

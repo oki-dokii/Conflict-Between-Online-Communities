@@ -133,3 +133,9 @@ For every negative A→B pair, the neighbour test looks for at least one third s
 The 500 seeded shuffles reassign signs over hyperlink slots and sum them back into their original pairs, preserving direction, pair multiplicities, and the network-wide number of negative labels. The script recalculates which pairs are negative and which neighbours send negative links to B after each shuffle. It reports null means, sample standard deviations, percentage-point differences, and z-scores. A rate with no negative pairs or a z-score with zero null variance is undefined. The shuffle can change each node's negative degree, so concentration around individual senders can affect the result. The test measures co-occurrence and uses no event chronology.
 
 The figure is saved to `figures/repeat_negative_pairs.png` and the frequency distribution and comparisons to `results/key_numbers.json` under `repeat`.
+
+## Conflict Atlas demo
+
+From the project folder, serve the buildless app with `python -m http.server 8765 --bind 127.0.0.1 --directory app/dist` and open `http://127.0.0.1:8765`. The app starts with fictional communities and an **Illustrative data** badge. Search for a community, filter arrows by direction, brush the timeline or use the month sliders, and select a counterpart to inspect both directions.
+
+After running the real build, run `python src/09_export_atlas.py` and select `data/processed/atlas_data.json` with **Load data**. The file is read in the browser. The exporter groups original link rows by UTC month and directed pair, retaining both negative counts and total counts. It uses a seeded two-dimensional PCA projection of the subreddit embeddings. Missing embeddings leave some communities without map positions, but those communities still have timelines and links. The projection can obscure distances from the full embedding space.

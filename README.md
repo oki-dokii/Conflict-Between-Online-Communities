@@ -69,3 +69,15 @@ Both rates are published only for subreddits with at least 20 outgoing links. Th
 The concentration analysis uses every hyperlink subreddit, including zero-count nodes, for negative outgoing links, all outgoing links, and negative incoming links. Each metric ranks subreddits separately. The top 0.1%, 1%, and 10% groups round up to a whole subreddit. The Lorenz curves accumulate counts from the lowest-count subreddit upward, and the Gini measures the area between each curve and equality. Pearson correlation uses the paired raw negative outgoing and incoming counts across all nodes.
 
 The script overlays the two outgoing Lorenz curves in `figures/lorenz_out_links.png`. It prints the Ginis, top-group shares, correlation, rate eligibility counts, and whether the top 10% send a majority of negative links. The same numeric results are saved under `node_stats` in `results/key_numbers.json`. A metric with zero total links has undefined concentration, and Pearson correlation is undefined if either count is constant. Rebuild the pair table first if the raw inputs have changed.
+
+## `src/03_balance.py`
+
+```sh
+python src/03_balance.py
+```
+
+Run after `01_build.py`. The script removes self-loops, combines the link counts of both directions for each pair, and uses python-igraph to enumerate triangles of three distinct subreddits. The main rule marks a pair negative if it has any negative link. The robustness rule marks it negative only if negative links outnumber neutral-or-positive links. Ties receive the nonnegative sign so both rules use the same topology.
+
+A triangle is balanced under this definition when it has zero or two negative edges. For each rule, 1,000 seeded shuffles redistribute the signs among existing edges while keeping the number of negative edges fixed. The script prints the observed triangle counts, shuffle means, sample standard deviations, and z-scores for all four types. It also compares the balanced fraction with the shuffle distribution and reports an independent-sign expectation using the observed negative-edge fraction and the binomial formula.
+
+The chart in `figures/structural_balance.png` shows both rules, with error bars of one shuffle standard deviation. Numbers are saved under `balance` in `results/key_numbers.json`. A graph without triangles has no balanced fraction, and a shuffle count with zero variance has no z-score. The any-negative rule gives more active pairs more chances to receive a negative label. The shuffle preserves topology and overall sign frequency but can change each node's negative degree. Label errors and node-level clustering can therefore affect the comparison.

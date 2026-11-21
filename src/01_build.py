@@ -22,6 +22,7 @@ from common import (
     ROOT,
     SEED,
     normalize_names,
+    read_feature_names,
 )
 
 
@@ -37,20 +38,6 @@ ALIASES = {
     "PROPERTIES": "properties",
     "POST_PROPERTIES": "properties",
 }
-
-
-def read_feature_names(path):
-    lines = path.read_text(encoding="utf-8-sig").splitlines()
-    names = [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
-    if len(names) != PROPERTY_COUNT or len(set(names)) != PROPERTY_COUNT:
-        raise ValueError(
-            f"{path}: provide {PROPERTY_COUNT} distinct feature names in SNAP order "
-            f"(found {len(names)} entries). See README.md."
-        )
-    collisions = sorted(set(names) & set(CORE_COLUMNS))
-    if collisions:
-        raise ValueError(f"{path}: feature names conflict with edge columns: {', '.join(collisions)}")
-    return names
 
 
 def read_link_chunks(path, source_file, features):
@@ -196,7 +183,7 @@ def summarize(edges, pairs, nodes, covered_nodes, embedding_rows):
 
 
 def build(args):
-    features = read_feature_names(args.feature_names)
+    features = read_feature_names(args.feature_names, reserved=CORE_COLUMNS)
     PROCESSED.mkdir(parents=True, exist_ok=True)
     RESULTS.mkdir(parents=True, exist_ok=True)
 

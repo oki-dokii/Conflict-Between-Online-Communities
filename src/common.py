@@ -16,6 +16,21 @@ PROPERTY_COUNT = 86
 EMBEDDING_DIMENSIONS = 300
 
 
+def read_feature_names(path=ROOT / "feature_names.txt", *, reserved=()):
+    """Read distinct feature names in the order used by the build."""
+    lines = path.read_text(encoding="utf-8-sig").splitlines()
+    names = [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
+    if len(names) != PROPERTY_COUNT or len(set(names)) != PROPERTY_COUNT:
+        raise ValueError(
+            f"{path}: provide {PROPERTY_COUNT} distinct feature names in SNAP order "
+            f"(found {len(names)} entries). See README.md."
+        )
+    collisions = sorted(set(names) & set(reserved))
+    if collisions:
+        raise ValueError(f"{path}: feature names conflict with edge columns: {', '.join(collisions)}")
+    return names
+
+
 def normalize_names(names):
     """Match Reddit community identifiers across files."""
     return names.str.strip().str.lower()

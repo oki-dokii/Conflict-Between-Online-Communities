@@ -113,3 +113,13 @@ The model comparison uses the same approximately stratified holdout for all fits
 The robustness run refits both models after removing the three VADER scores and the six LIWC features for affect, positive emotion, negative emotion, anxiety, anger, and sadness. It reports how much performance changes and how the remaining average precision compares with prevalence. Predictive performance measures agreement with the published classifier labels. Other language features can still proxy for sentiment, and this split does not measure generalization to unseen subreddits or time periods.
 
 Outputs are `data/processed/language_effects.parquet`, `data/processed/language_importances.parquet`, and `figures/language_top_features.png`. The script prints key numbers and saves them under `language` in `results/key_numbers.json`.
+
+## `src/07_time.py`
+
+Run `python src/07_time.py` after the build. The script groups hyperlink rows by UTC calendar month. It plots negative counts, negative fractions, distinct negative senders, and the share of negative links sent by each month's top 10 senders. Months with no links have undefined negative fractions, and months with no negative links have undefined top-10 shares. The analysis is deterministic and uses no randomness.
+
+A spike is one of the three largest positive percentage-point changes in negative fraction from the immediately previous calendar month. Both months must have links. The first and last observed months are flagged because coverage may be partial. A large percentage-point increase can occur in a low-volume month, so the report prints both months' denominators.
+
+For each spike, the script ranks senders and directed pairs by negative-link count and separately by contribution to the rise. A group's contribution is its negative links divided by all links this month minus the corresponding share last month. These signed contributions sum to the overall change, and they can shift when the denominator changes even if the group sends the same number of negative links. The report prints names as dataset identifiers, along with concentration shares and the number of groups that contributed to the rise. Classifier errors can affect all of these counts.
+
+The table is saved to `results/monthly_link_stats.parquet`, spike details to `results/key_numbers.json` under `time`, and the figure to `figures/monthly_negative_links.png`.

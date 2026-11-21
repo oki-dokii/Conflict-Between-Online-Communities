@@ -5,3 +5,4 @@ data/raw/*
 data/processed/*
 !data/processed/.gitkeep
 results/key_numbers.json
+results/monthly_link_stats.parquet

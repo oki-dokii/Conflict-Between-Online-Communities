@@ -55,3 +55,17 @@ Self-loops stay in the edge table, pair table, graph, and slide totals because t
 The build treats timezone-free timestamps as UTC and converts explicit offsets to UTC. Bad dates, invalid signs, malformed feature or embedding vectors, and duplicate normalized embedding names fail the build. A correctly sized vector can still be assigned incorrect names if the feature list is out of order. The script stages the processed files before replacing prior outputs. Run the build to completion before starting downstream scripts.
 
 `src/common.py` provides `load_edges()`, `load_pairs()`, `load_embeddings()`, and `load_graph()`. Use `load_edges(columns=[...])` to read only the needed columns. `load_embeddings()` indexes the vectors by normalized subreddit name.
+
+## `src/02_node_stats.py`
+
+```sh
+python src/02_node_stats.py
+```
+
+Run after `01_build.py`. The script sums each pair's link counts by sender and receiver and saves one row per subreddit to `data/processed/node_stats.parquet`. Incoming-only and outgoing-only subreddits get zero counts in the opposite direction. Each self-loop contributes once to outgoing and once to incoming counts, and parallel links retain their multiplicity. A +1 label includes neutral links. Classifier errors can affect both link counts and rates.
+
+Both rates are published only for subreddits with at least 20 outgoing links. This outgoing activity cutoff limits the effect of very small sending denominators and defines the same eligibility group for both rates. The incoming rate divides negative incoming links by all incoming links and is also missing when there are no incoming links. Eligible subreddits can still have low incoming volume, so use `total_in` when interpreting those rates.
+
+The concentration analysis uses every hyperlink subreddit, including zero-count nodes, for negative outgoing links, all outgoing links, and negative incoming links. Each metric ranks subreddits separately. The top 0.1%, 1%, and 10% groups round up to a whole subreddit. The Lorenz curves accumulate counts from the lowest-count subreddit upward, and the Gini measures the area between each curve and equality. Pearson correlation uses the paired raw negative outgoing and incoming counts across all nodes.
+
+The script overlays the two outgoing Lorenz curves in `figures/lorenz_out_links.png`. It prints the Ginis, top-group shares, correlation, rate eligibility counts, and whether the top 10% send a majority of negative links. The same numeric results are saved under `node_stats` in `results/key_numbers.json`. A metric with zero total links has undefined concentration, and Pearson correlation is undefined if either count is constant. Rebuild the pair table first if the raw inputs have changed.

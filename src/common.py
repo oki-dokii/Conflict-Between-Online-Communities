@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RAW = ROOT / "data" / "raw"
 PROCESSED = ROOT / "data" / "processed"
 RESULTS = ROOT / "results"
+FIGURES = ROOT / "figures"
 SEED = 42
 PROPERTY_COUNT = 86
 EMBEDDING_DIMENSIONS = 300
@@ -25,9 +26,9 @@ def load_edges(directory=PROCESSED, *, columns=None):
     return pd.read_parquet(Path(directory) / "edges.parquet", columns=columns)
 
 
-def load_pairs(directory=PROCESSED):
+def load_pairs(directory=PROCESSED, *, columns=None):
     """Read one row per ordered source-target pair."""
-    return pd.read_parquet(Path(directory) / "pairs.parquet")
+    return pd.read_parquet(Path(directory) / "pairs.parquet", columns=columns)
 
 
 def load_embeddings(directory=PROCESSED):

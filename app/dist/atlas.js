@@ -521,7 +521,11 @@ $("time").addEventListener("pointerup", event => {
 $("time").addEventListener("pointercancel", () => { brushStart = null; });
 let resizeTimer;
 window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 80); });
-fetch("demo.json").then(response => {
+// The static host can serve this page for unknown paths.
+if (location.pathname !== "/") {
+  history.replaceState(null, "", "/" + location.search + location.hash);
+}
+fetch("/demo.json").then(response => {
   if (!response.ok) throw new Error("Preview data could not be loaded.");
   return response.json();
 }).then(raw => { if (!data) install(raw); }).catch(error => { if (!data) message(error.message); });

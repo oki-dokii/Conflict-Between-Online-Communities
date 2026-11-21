@@ -2,6 +2,105 @@
 
 AIM608 project on signed, directed hyperlinks between Reddit communities.
 
+[Open the public Conflict Atlas demo](https://aim608-conflict-atlas.violet-horse-4096.chatgpt.site)
+
+The project asks where negative-labeled links go, how concentrated they are, and how those patterns relate to community structure, shared audiences, and language. The public demo opens with illustrative hyperlink records. **Load data** reads an exported SNAP file in the browser.
+
+## Data and reported numbers
+
+| Quantity | Value | Provenance |
+| --- | ---: | --- |
+| Subreddits in the hyperlink network | 55,863 | SNAP dataset summary |
+| Hyperlink records | 858,490 | SNAP dataset summary |
+| Published coverage | Jan 2014 to Apr 2017 | SNAP dataset summary; the build prints the exact observed UTC bounds |
+| Text properties per hyperlink record | 86 | Published property-vector layout |
+| Subreddit embedding rows | 51,278 | SNAP download and dataset summary |
+| Dimensions per source embedding | 300 | SNAP dataset summary |
+| UMAP seed and output dimensions | 42 and 2 | Project configuration |
+| Subreddits in the saved UMAP | 51,269 | Measured on the full SNAP embedding CSV |
+| Zero-norm vectors omitted | 9 | Measured on the full SNAP embedding CSV |
+
+The source figures above describe the published data. The negative share, duplicate-post overlap, embedding coverage on the hyperlink network, and analysis results are calculated from the actual build outputs. The UMAP-only workflow uses the embeddings CSV independently of the hyperlink TSVs. [SNAP hyperlink data](https://snap.stanford.edu/data/soc-RedditHyperlinks.html) · [SNAP embedding data](https://snap.stanford.edu/data/web-RedditEmbeddings.html)
+
+Each row is a directed hyperlink record. Its label is −1 for negative or +1 for neutral or positive. The same post ID can contribute several rows. Text properties describe the source post; the raw post text is unavailable. Embeddings describe similarity in user participation, and label errors can affect every signed comparison. Subreddit names are dataset identifiers.
+
+## Pipeline
+
+```mermaid
+flowchart LR
+    TSV["Title + body TSVs"] --> QA["00 · Audit inputs"]
+    TSV --> Build["01 · Typed build"]
+    CSV["300-D embedding CSV"] --> Build
+    Names["Ordered feature_names.txt"] --> Build
+    Build --> Edges["Hyperlink rows"]
+    Build --> Pairs["Directed pair counts + GraphML"]
+    Build --> Vectors["Network-matched embeddings"]
+    Pairs --> Structure["02, 03, 04, 08 · Concentration, balance, groups, repeat links"]
+    Edges --> Observed["05, 06, 07 · Distance, language, time"]
+    Vectors --> Observed
+    Vectors --> Structure
+    CSV --> UMAP["09 · Seeded 2D UMAP"]
+    Vectors --> UMAP
+    UMAP --> Plane["umap_2d.parquet"]
+    Plane --> Export["09 · Atlas JSON export"]
+    Edges --> Export
+    Export --> Site["Browser · Atlas, Activity, Counterparts, Link Table"]
+    Structure --> Outputs["Figures + key_numbers.json"]
+    Observed --> Outputs
+```
+
+## Run the analyses
+
+After setup, downloads, and completion of the ordered feature list, run from the repository root:
+
+```sh
+python src/00_check_data.py
+python src/01_build.py
+for script in src/0[2-8]_*.py; do python "$script" || break; done
+python src/09_export_atlas.py --reuse-projection
+```
+
+The final command reuses the checked-in coordinates. Run `python src/09_export_atlas.py` to fit on the current build's matched embedding rows instead. To fit and save the full published embedding set independently:
+
+```sh
+python src/09_export_atlas.py --projection-only \
+  --raw-embeddings data/raw/web-redditEmbeddings-subreddits.csv
+```
+
+Stochastic analyses use seed 42, with seeds 42–46 for Louvain stability. Keep dependency versions fixed when comparing results across machines. Run the pipeline sequentially so each stage can update the shared one-line JSON summary. Undefined statistics are represented as missing values or JSON `null`.
+
+## Figures and statistics index
+
+| Stage | PNG figure | What to read in `results/key_numbers.json` |
+| --- | --- | --- |
+| 00 Data audit | — | `data_check`: rows, distinct nodes, negative shares, shared post IDs, missing vectors, property-width histogram |
+| 01 Build | — | `build`: dates, links, posts, directed pairs, labels, self-loops, and embedding coverage |
+| 02 Node statistics | `figures/lorenz_out_links.png` | `node_stats`: Gini, top 0.1% / 1% / 10% shares for outgoing negative, all outgoing, and incoming negative links, and Pearson correlation |
+| 03 Balance | `figures/structural_balance.png` | `balance`: triangle sign counts, observed balanced fractions, 1,000-shuffle means and SDs, z-scores, and independent-sign expectations |
+| 04 Communities | — | `communities`: component size, modularity and cross-seed stability, silhouette selection, NMI and ARI, within-link shares and null differences |
+| 05 Distance | `figures/distance_densities.png` | `distance`: cosine distributions, sample sizes, KS and Cohen's d for each comparison, deduplication and degree-bin checks |
+| 06 Language | `figures/language_top_features.png` | `language`: ranked effects and bootstrap intervals, split prevalence, ROC-AUC, PR-AUC and average precision before and after sentiment removal |
+| 07 Time | `figures/monthly_negative_links.png` | `time`: calendar coverage, fraction spikes and top sender or pair contributions; monthly rows in `results/monthly_link_stats.parquet` |
+| 08 Repeat links | `figures/repeat_negative_pairs.png` | `repeat`: repeat frequency, reciprocity, neighbour and attacker rates, 500-shuffle summaries and z-scores |
+| 09 Projection and export | [`figures/embeddings_umap.png`](figures/embeddings_umap.png) | `umap`: fit settings and projected rows; `atlas`: exported nodes, months, and monthly directed pairs |
+
+### How to interpret the network tests
+
+```mermaid
+flowchart LR
+    A((A)) -->|"anchor · negative"| B((B))
+    A -->|"negative"| C((C))
+    C -.->|"any link either way for neighbour test; C → B negative for attacker test"| B
+```
+
+- **Concentration** compares cumulative shares and Gini on the same node population. Negativity can appear concentrated simply because overall linking activity is concentrated.
+- **Balance** counts triangles with zero or two negative edges as balanced. The null preserves the unsigned topology and the number of negative signs. The majority and any-negative collapse rules can yield different results.
+- **Within versus between** compares endpoint labels inside the largest weak component. The embedding partition covers only nodes with vectors. Report sign gaps in percentage points and check the expected values under shuffling.
+- **Distance** uses the original 300-dimensional vectors. The interactive UMAP is for visual exploration, and distances between remote regions can be distorted. Compare negative links with both neutral-or-positive links and random nodes.
+- **Language** predicts classifier labels. Closely related language features can retain predictive signal even after sentiment scores are removed. Report prevalence alongside PR performance.
+- **Time** ranks increases against the preceding UTC month and prints the denominators. Partial first or last months can affect comparisons.
+- **Repeat and neighbour tests** use co-occurrence across the observation period. A departure from the shuffled baseline says which patterns are more or less common; the test contains no chronological evidence of transmission.
+
 ## Setup
 
 Use Python 3.11. The checker uses the standard library. The project requirements include python-igraph and the analysis libraries, with PyArrow for Parquet.
@@ -138,4 +237,20 @@ The figure is saved to `figures/repeat_negative_pairs.png` and the frequency dis
 
 From the project folder, serve the buildless app with `python -m http.server 8765 --bind 127.0.0.1 --directory app/dist` and open `http://127.0.0.1:8765`. The app starts with fictional communities and an **Illustrative data** badge. Search for a community, filter arrows by direction, and select a counterpart to inspect counts and negative fractions in both directions. Use the timeline brush, date presets, or month menus to narrow the period. The left sidebar shows dataset node count, negative links in the selected period, and the active dates. Activity lists monthly directional totals and rates. Top Counterparts ranks negative-labeled links, and Link Table shows paginated monthly counts per directed pair.
 
-After running the real build, run `python src/09_export_atlas.py` and select `data/processed/atlas_data.json` with **Load data**. The file is read in the browser. The exporter groups original link rows by UTC month and directed pair, retaining both negative counts and total counts. It uses a seeded two-dimensional PCA projection of the subreddit embeddings. Missing embeddings leave some communities without map positions, but those communities still have timelines and links. The projection can obscure distances from the full embedding space.
+After running the real build, run `python src/09_export_atlas.py --reuse-projection` and select `data/processed/atlas_data.json` with **Load data**. The file is read in the browser. The exporter groups original link rows by UTC month and directed pair, retaining both negative counts and total counts. Missing embeddings leave communities without map positions, but those communities still have timelines and links.
+
+## `src/09_export_atlas.py`
+
+The [precomputed coordinate table](data/processed/umap_2d.parquet) contains `subreddit`, `umap_x`, and `umap_y`. It contains 51,269 of SNAP's 51,278 embedding rows. The nine zero-norm vectors have undefined cosine distance and were skipped. The fit sorts names and uses cosine distance, seed 42, 15 neighbours, minimum distance 0.1, and one worker. The browser reads coordinates from the exported JSON, so filtering dates or selecting subreddits does not refit the map. [UMAP reproducibility documentation](https://umap-learn.readthedocs.io/en/latest/reproducibility.html)
+
+![Seeded 2D UMAP scatterplot of 51,269 SNAP subreddit embeddings](figures/embeddings_umap.png)
+
+The UMAP figure and coordinates are included here. The other figures and statistics in the index are generated by their scripts once the hyperlink TSVs and populated feature list are available.
+
+The Atlas distinguishes illustrative and SNAP exports. Its left rail shows dataset size and in-range negative links. Its right rail reports counts for the selected node and a pair-level breakdown with all-link denominators. The timeline and Activity calculate monthly directional counts, and date controls also filter Top Counterparts and the paginated Link Table.
+
+### References
+
+- Srijan Kumar, William L. Hamilton, Jure Leskovec, and Dan Jurafsky. *Community Interaction and Conflict on the Web*. WWW 2018. [Paper and dataset citation](https://snap.stanford.edu/data/soc-RedditHyperlinks.html)
+- Jure Leskovec, Daniel Huttenlocher, and Jon Kleinberg. *Signed Networks in Social Media*. CHI 2010.
+- David Easley and Jon Kleinberg. *Networks, Crowds, and Markets*, chapter 5, “Positive and Negative Relationships.”

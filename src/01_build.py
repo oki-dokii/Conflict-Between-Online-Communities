@@ -23,6 +23,7 @@ from common import (
     SEED,
     normalize_names,
     read_feature_names,
+    read_raw_embeddings,
 )
 
 
@@ -108,22 +109,6 @@ def make_pairs(edges):
     )
 
 
-def read_embeddings(path):
-    # Each headerless row holds one community name followed by its coordinates.
-    frame = pd.read_csv(path, header=None, dtype={0: str}, keep_default_na=False,
-                        index_col=False, encoding="utf-8-sig")
-    if frame.shape[1] != EMBEDDING_DIMENSIONS + 1:
-        raise ValueError(f"{path}: expected a subreddit and {EMBEDDING_DIMENSIONS} coordinates")
-    names = normalize_names(frame.iloc[:, 0])
-    if names.eq("").any() or names.duplicated().any():
-        raise ValueError(f"{path}: expected unique, nonempty normalized subreddit names")
-    vectors = frame.iloc[:, 1:].astype("float64")
-    if not np.isfinite(vectors.to_numpy()).all():
-        raise ValueError(f"{path}: embedding coordinates must be finite numeric values")
-    vectors.columns = [f"dim_{index:03d}" for index in range(EMBEDDING_DIMENSIONS)]
-    return pd.concat([names.rename("subreddit"), vectors], axis=1)
-
-
 def write_graph(pairs, nodes, covered_nodes, output):
     names = sorted(nodes)
     vertex_ids = {name: index for index, name in enumerate(names)}
@@ -197,7 +182,7 @@ def build(args):
         pairs.to_parquet(staged / "pairs.parquet", index=False)
 
         nodes = set(edges["source"]) | set(edges["target"])
-        embeddings = read_embeddings(args.embeddings)
+        embeddings = read_raw_embeddings(args.embeddings)
         aligned = embeddings.loc[embeddings["subreddit"].isin(nodes)].sort_values("subreddit")
         covered_nodes = set(aligned["subreddit"])
         aligned.to_parquet(staged / "embeddings.parquet", index=False)

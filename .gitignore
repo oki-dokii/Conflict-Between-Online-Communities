@@ -4,5 +4,6 @@ data/raw/*
 !data/raw/.gitkeep
 data/processed/*
 !data/processed/.gitkeep
+!data/processed/umap_2d.parquet
 results/key_numbers.json
 results/monthly_link_stats.parquet

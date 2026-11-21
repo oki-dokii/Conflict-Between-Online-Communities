@@ -349,9 +349,10 @@ function drawMap(visible) {
     ctx.fillText((ymin + i * (ymax - ymin) / 8).toFixed(1), left - 7, y + 4);
   }
   ctx.strokeStyle = "#67738c"; ctx.strokeRect(left, top, right - left, bottom - top);
-  ctx.textAlign = "center"; ctx.fillText("Embedding X", (left + right) / 2, h - 6);
+  const umap = data.projection === "umap";
+  ctx.textAlign = "center"; ctx.fillText(umap ? "UMAP 1" : "Embedding X", (left + right) / 2, h - 6);
   ctx.save(); ctx.translate(10, (top + bottom) / 2); ctx.rotate(-Math.PI / 2);
-  ctx.fillText("Embedding Y", 0, 0); ctx.restore(); ctx.textAlign = "left";
+  ctx.fillText(umap ? "UMAP 2" : "Embedding Y", 0, 0); ctx.restore(); ctx.textAlign = "left";
   const radius = plotted.length > 5000 ? 1.1 : 2;
   for (const node of plotted) point(ctx, ...project(node), radius, "#59708e99");
   if (!located) return;

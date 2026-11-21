@@ -5,3 +5,4 @@ scipy
 scikit-learn
 matplotlib
 pyarrow
+umap-learn==0.6.0

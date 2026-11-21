@@ -1,37 +1,103 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="Explore the direction and timing of negative-labeled links between Reddit communities.">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Explore negative-labeled links between Reddit communities.">
 <title>Conflict Atlas · AIM608</title>
+<link rel="icon" href="reddit.png">
 <link rel="stylesheet" href="atlas.css">
 <script defer src="atlas.js"></script>
 </head>
 <body>
-<header class="mast"><a href="./" class="wordmark"><span class="mark" aria-hidden="true"></span>Conflict Atlas</a><span class="course">AIM608 / Network Semantics</span><div class="header-actions"><span id="dataBadge" class="badge">Illustrative data</span><button id="methods">Methods</button><label class="button file-button">Load data<input id="file" type="file" accept=".json,application/json"></label></div></header>
-<main>
-  <div class="intro"><div><h1>Follow the links.</h1><p>Explore where negative-labeled links go, who sends them, and when they appear.</p></div><label class="search-label" for="search">Find a subreddit<input id="search" list="communities" placeholder="Type a subreddit name" autocomplete="off"><datalist id="communities"></datalist></label></div>
-  <p id="message" role="status" hidden></p>
-  <div class="dashboard">
-    <section class="panel map-panel" aria-labelledby="mapTitle">
-      <header class="panel-head"><div><h2 id="mapTitle">Embedding map</h2><p id="mapNote">Points represent communities in shared-user embedding space.</p></div><div class="filters" aria-label="Link direction"><button data-direction="both" aria-pressed="true">Both</button><button data-direction="out" aria-pressed="false">Outgoing</button><button data-direction="in" aria-pressed="false">Incoming</button></div></header>
-      <div class="map-area"><canvas id="map" aria-label="Reddit embedding map. Use the counterpart list to inspect any highlighted point."></canvas><span id="mapHover" class="tooltip" hidden></span></div>
-      <div class="map-footer"><span><i class="dot out"></i>Outgoing</span><span><i class="dot in"></i>Incoming</span><span><i class="dot other"></i>Other communities</span><span class="map-hint">Select a highlighted point to inspect the pair</span></div>
+<header class="mast">
+  <a href="./" class="wordmark"><span class="mark" aria-hidden="true"></span>Conflict Atlas</a>
+  <span class="course">Explore negative-labeled Reddit hyperlinks.</span>
+  <nav class="header-actions" aria-label="Main navigation">
+    <button data-view="atlas" aria-current="page">Atlas</button>
+    <button data-view="activity">Activity</button>
+    <button id="methods">Methods</button>
+  </nav>
+  <span id="dataBadge" class="badge">Illustrative data</span>
+</header>
+<main class="dashboard">
+  <aside class="sidebar" aria-label="Atlas controls">
+    <label class="search-label" for="search">Search Reddit
+      <span class="search-box"><i aria-hidden="true"></i><input id="search" list="communities" placeholder="Search subreddits..." autocomplete="off"></span>
+      <datalist id="communities"></datalist>
+    </label>
+    <p id="message" role="status" hidden></p>
+    <section class="sidebar-section">
+      <h2>Selection</h2>
+      <button id="selectionButton" class="selected-node" aria-label="Choose a subreddit">
+        <img src="reddit.png" width="32" height="32" alt=""><strong id="selectedName"></strong><i class="chevron" aria-hidden="true"></i>
+      </button>
+      <dl class="scope">
+        <dt>Scope</dt><dd>Negative-labeled links <button id="scopeInfo" aria-label="About negative labels">ⓘ</button></dd>
+        <dt>Nodes</dt><dd id="nodeCount">—</dd>
+        <dt>Links</dt><dd id="linkCount">—</dd>
+        <dt>Time range</dt><dd id="scopeDates">—</dd>
+      </dl>
     </section>
-    <aside class="panel dossier" aria-labelledby="dossierTitle">
-      <div class="panel-head"><div><h2 id="dossierTitle">Pair dossier</h2><p id="selection"></p></div></div>
-      <div class="counts"><div><span><i class="dot out"></i>Outgoing</span><strong id="outCount">0</strong></div><div><span><i class="dot in"></i>Incoming</span><strong id="inCount">0</strong></div></div>
-      <div id="pairDetail" class="pair-detail"></div>
-      <div class="listing"><h3>Counterparts <span id="listCount"></span></h3><div id="counterparts"></div></div>
-    </aside>
-    <section class="panel timeline" aria-labelledby="timeTitle">
-      <header class="panel-head"><div><h2 id="timeTitle">Negative links over time</h2><p id="range"></p></div><button id="reset">Reset dates</button></header>
-      <div class="time-area"><canvas id="time" aria-label="Monthly counts. Drag to select a range, or use the month controls below."></canvas></div>
-      <div class="date-controls"><label>Start month <input type="range" id="start"></label><label>End month <input type="range" id="end"></label></div>
+    <nav class="sidebar-section view-nav" aria-label="Atlas views">
+      <h2>View</h2>
+      <button data-view="atlas" aria-current="page"><span aria-hidden="true">⁙</span>Embedding (Atlas)</button>
+      <button data-view="activity"><span aria-hidden="true">⌁</span>Time Series</button>
+      <button data-view="counterparts"><span aria-hidden="true">☷</span>Top Counterparts</button>
+      <button data-view="links"><span aria-hidden="true">▦</span>Link Table</button>
+    </nav>
+    <label class="button file-button">Load data<input id="file" type="file" accept=".json,application/json"></label>
+  </aside>
+  <div class="workspace">
+    <section id="mapPanel" class="panel map-panel" aria-labelledby="mapTitle">
+      <header class="panel-head">
+        <div><h1 id="mapTitle">Embedding Atlas</h1><p id="mapNote">Subreddit hyperlinks in shared-user embedding space.</p></div>
+        <div class="legend" aria-label="Map legend"><span><b class="out">➜</b> Outgoing</span><span><b class="in">➜</b> Incoming</span><span><i class="dot"></i> Other point</span></div>
+      </header>
+      <div class="map-area"><canvas id="map" aria-label="Embedding scatterplot. Choose a counterpart from the list to inspect its pair."></canvas><span id="mapHover" class="tooltip" hidden></span></div>
+    </section>
+    <section id="timelinePanel" class="panel timeline" aria-labelledby="timeTitle">
+      <header class="panel-head">
+        <div><h2 id="timeTitle">Negative-Labeled Links Over Time</h2><p id="timelineNote"></p></div>
+        <div class="time-tools">
+          <div class="segmented" aria-label="Date presets">
+            <button data-months="1">1M</button><button data-months="3">3M</button><button data-months="6">6M</button><button data-months="12">1Y</button><button data-months="all">All</button>
+          </div>
+          <details class="range-picker"><summary id="range">Choose dates</summary>
+            <div class="date-controls"><label>Start month <select id="start"></select></label><label>End month <select id="end"></select></label></div>
+          </details>
+        </div>
+      </header>
+      <div class="time-area"><canvas id="time" aria-label="Monthly negative counts. Drag to select a date range or use the month menus."></canvas></div>
+    </section>
+    <section id="analyticsPanel" class="panel analytics-panel" aria-labelledby="analyticsTitle" hidden>
+      <header class="panel-head"><div><h2 id="analyticsTitle"></h2><p id="analyticsNote"></p></div></header>
+      <div id="analytics"></div>
     </section>
   </div>
-  <footer>Labels come from a text classifier. Embedding proximity reflects shared user participation.</footer>
+  <aside class="dossier" aria-labelledby="dossierTitle">
+    <h2 id="dossierTitle">Pair Dossier</h2>
+    <p id="selection"></p>
+    <div class="counts">
+      <div><span>Outgoing links</span><strong><b class="out" aria-hidden="true">➜</b> <span id="outCount">0</span></strong></div>
+      <div><span>Incoming links</span><strong><b class="in" aria-hidden="true">➜</b> <span id="inCount">0</span></strong></div>
+      <div class="total-peers"><span>Total counterparts</span><strong id="peerCount">0</strong></div>
+    </div>
+    <div class="listing">
+      <h3>Counterpart Links</h3>
+      <div class="segmented direction" aria-label="Direction"><button data-direction="both" aria-pressed="true">Both</button><button data-direction="out" aria-pressed="false">Outgoing</button><button data-direction="in" aria-pressed="false">Incoming</button></div>
+      <div id="counterparts"></div>
+    </div>
+    <details class="pair-detail" id="pairDisclosure"><summary>Pair breakdown</summary><div id="pairDetail"></div></details>
+  </aside>
 </main>
-<dialog id="methodsDialog"><h2>How to read the atlas</h2><p>Amber arrows show negative-labeled links sent by the selected subreddit. Violet arrows point toward it. The map highlights the strongest visible counterparts, while the list includes all counterparts in the selected period.</p><p>The timeline uses UTC months. Negative fractions in the dossier use all link rows for the specified direction as the denominator. Repeat links count separately.</p><p>Embedding positions use a two-dimensional PCA projection when SNAP data is loaded. Communities without vectors can still be explored through the timeline and list. The built-in dataset uses fictional communities and illustrative link counts.</p><form method="dialog"><button>Close</button></form></dialog>
+<dialog id="methodsDialog">
+  <h2>How to read the atlas</h2>
+  <p>Amber arrows point from the selected subreddit to its counterparts. Violet arrows point toward the selected subreddit. The map highlights up to 12 counterparts with embeddings; the list includes all matching counterparts.</p>
+  <p>Nodes counts all communities in the loaded dataset. Links counts negative-labeled hyperlinks across that dataset in the selected date range. The dossier and Activity tab show links for the selected subreddit. A self-link contributes to both directional counts and once to the network-wide count.</p>
+  <p>Negative fractions use all hyperlink rows in the relevant direction as the denominator. Labels come from a classifier. Months use UTC, and repeated hyperlinks count separately.</p>
+  <p>SNAP positions are a two-dimensional PCA projection of embeddings that reflect shared user participation. Communities without embeddings remain searchable. The illustrative dataset uses fictional communities and sample counts.</p>
+  <form method="dialog"><button>Close</button></form>
+</dialog>
 </body>
 </html>

@@ -1,0 +1,195 @@
+"""Measure repeat negative links, reciprocity, and negative-link patterns around neighbours."""
+
+import argparse
+import json
+from itertools import permutations
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+import igraph as ig
+import matplotlib
+
+matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+from common import FIGURES, RESULTS, SEED, load_pairs
+
+
+SHUFFLES = 500
+
+
+def pair_topology(pairs):
+    names = sorted(set(pairs["source"]) | set(pairs["target"]))
+    ids = {name: index for index, name in enumerate(names)}
+    source = pairs["source"].map(ids).to_numpy(dtype=np.int64)
+    target = pairs["target"].map(ids).to_numpy(dtype=np.int64)
+    n = len(names)
+
+    # Encode ordered pairs so both directions can be looked up in vectorized form.
+    keys = source * n + target
+    order = np.argsort(keys)
+    sorted_keys = keys[order]
+    absent = len(keys)
+
+    def lookup(a, b):
+        query = a * n + b
+        if not len(keys):
+            return np.full(query.shape, absent, dtype=np.intp)
+        index = np.searchsorted(sorted_keys, query)
+        safe = np.minimum(index, absent - 1)
+        return np.where((index < absent) & (sorted_keys[safe] == query), order[safe], absent)
+
+    graph = ig.Graph(n=n, edges=list(zip(source, target)), directed=True)
+    undirected = graph.as_undirected(mode="collapse")
+    # Every eligible A, B, C forms an undirected triangle. Retain only
+    # orientations with observed A→B and A→C links, regardless of their signs.
+    triangles = np.asarray(undirected.list_triangles(), dtype=np.int64).reshape(-1, 3)
+    motifs = []
+    for i, j, k in permutations(range(3)):
+        a, b, c = triangles[:, i], triangles[:, j], triangles[:, k]
+        anchor, candidate = lookup(a, b), lookup(a, c)
+        valid = (anchor < absent) & (candidate < absent)
+        motifs.append(np.array([anchor[valid], candidate[valid], lookup(c[valid], b[valid])]))
+    return lookup(target, source), np.concatenate(motifs, axis=1), len(triangles)
+
+
+def rates(n_neg, reverse, motifs):
+    n_pairs = int(np.count_nonzero(n_neg))
+    n_links = int(n_neg.sum())
+    if not n_pairs:
+        return None
+    negative = np.r_[n_neg > 0, False]  # Last entry marks a missing directed pair.
+    anchor, candidate, attacker = motifs
+    candidate_negative = negative[candidate]
+    attack_chain = candidate_negative & negative[attacker]
+    neighbour_anchors = np.bincount(anchor[candidate_negative], minlength=len(n_neg)) > 0
+    attacker_anchors = np.bincount(anchor[attack_chain], minlength=len(n_neg)) > 0
+    active = negative[:-1]
+    return {
+        "reciprocity": np.count_nonzero(active & negative[reverse]) / n_pairs,
+        "neighbour_link_weighted": int(n_neg[neighbour_anchors].sum()) / n_links,
+        "attacker_link_weighted": int(n_neg[attacker_anchors].sum()) / n_links,
+        "neighbour_pair_weighted": np.count_nonzero(active & neighbour_anchors) / n_pairs,
+        "attacker_pair_weighted": np.count_nonzero(active & attacker_anchors) / n_pairs,
+    }
+
+
+def compare_null(n_neg, n_total, reverse, motifs):
+    observed = rates(n_neg, reverse, motifs)
+    if observed is None:
+        return None
+    # Shuffle one Boolean per hyperlink and immediately sum it back into the
+    # existing directed pairs. Pair capacities and total negatives stay fixed.
+    starts = np.cumsum(n_total) - n_total
+    signs = np.arange(int(n_total.sum())) < int(n_neg.sum())
+    rng = np.random.default_rng(SEED)
+    null = {name: np.empty(SHUFFLES) for name in observed}
+    for draw in range(SHUFFLES):
+        rng.shuffle(signs)
+        shuffled_neg = np.add.reduceat(signs, starts, dtype=np.int64)
+        shuffled = rates(shuffled_neg, reverse, motifs)
+        for name, value in shuffled.items():
+            null[name][draw] = value
+
+    result = {}
+    for name, value in observed.items():
+        mean = float(null[name].mean())
+        # Constant draws can still show tiny roundoff if std computes a new mean.
+        sd = float(null[name].std(ddof=1)) if np.ptp(null[name]) else 0.0
+        result[name] = {
+            "observed": value, "null_mean": mean, "null_std": sd,
+            "observed_minus_null_pp": 100 * (value - mean),
+            "z_score": (value - mean) / sd if sd else None,
+        }
+    return result
+
+
+def plot_repeats(counts, frequencies, path):
+    fig, ax = plt.subplots(figsize=(6.8, 4.6), layout="constrained")
+    ax.set(xscale="log", yscale="log", title="Negative links per directed subreddit pair",
+           xlabel="Negative links on a pair", ylabel="Directed pairs")
+    if len(counts):
+        ax.scatter(counts, frequencies, s=22, color="#35629A")
+    else:
+        ax.text(0.5, 0.5, "No directed pairs with negative links",
+                transform=ax.transAxes, ha="center")
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.grid(alpha=0.2)
+    fig.savefig(path, dpi=200)
+    plt.close(fig)
+
+
+def print_comparisons(result):
+    if result is None:
+        print("No negative links between distinct nodes, so the rates are undefined.")
+        return
+    labels = {
+        "reciprocity": "Reciprocal negative directed pairs",
+        "neighbour_link_weighted": "A also links negatively to a neighbour of B (link-weighted)",
+        "attacker_link_weighted": "A also links negatively to a negative sender to B (link-weighted)",
+        "neighbour_pair_weighted": "A also links negatively to a neighbour of B (pair-weighted)",
+        "attacker_pair_weighted": "A also links negatively to a negative sender to B (pair-weighted)",
+    }
+    for key, label in labels.items():
+        row = result[key]
+        z = "undefined" if row["z_score"] is None else f"{row['z_score']:+.2f}"
+        print(f"{label}: observed {row['observed']:.2%}, null {row['null_mean']:.2%} "
+              f"± {row['null_std']:.2%} SD, difference {row['observed_minus_null_pp']:+.2f} pp, z {z}.")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.parse_args()
+    try:
+        pairs = load_pairs(columns=["source", "target", "n_pos", "n_neg"])
+    except FileNotFoundError as error:
+        parser.exit(1, f"Run src/01_build.py first. {error}\n")
+
+    loops = pairs["source"].eq(pairs["target"])
+    links = pairs.loc[~loops]
+    negative = links["n_neg"].to_numpy(dtype=np.int64)
+    totals = links[["n_pos", "n_neg"]].sum(axis=1).to_numpy(dtype=np.int64)
+    counts, frequencies = np.unique(negative[negative > 0], return_counts=True)
+    n_pairs = int(frequencies.sum())
+    repeated = int(frequencies[counts >= 2].sum())
+    reverse, motifs, triangles = pair_topology(links)
+    comparisons = compare_null(negative, totals, reverse, motifs)
+    numbers = {
+        "directed_pairs": len(links), "negative_directed_pairs": n_pairs,
+        "negative_links": int(negative.sum()), "excluded_self_loop_pairs": int(loops.sum()),
+        "pairs_with_two_or_more": repeated,
+        "repeat_share": repeated / n_pairs if n_pairs else None,
+        "negative_links_per_pair_distribution": dict(zip(map(int, counts), map(int, frequencies))),
+        "undirected_triangles": triangles, "shuffles": SHUFFLES if comparisons is not None else 0,
+        "comparisons": comparisons,
+    }
+    FIGURES.mkdir(parents=True, exist_ok=True)
+    RESULTS.mkdir(parents=True, exist_ok=True)
+    key_file = RESULTS / "key_numbers.json"
+    key_numbers = json.loads(key_file.read_text(encoding="utf-8")) if key_file.exists() else {}
+    key_numbers["repeat"] = numbers
+    plot_repeats(counts, frequencies, FIGURES / "repeat_negative_pairs.png")
+    with TemporaryDirectory(prefix=".repeat-", dir=RESULTS) as work:
+        summary = Path(work) / key_file.name
+        summary.write_text(json.dumps(key_numbers, separators=(",", ":"), allow_nan=False) + "\n",
+                           encoding="utf-8")
+        summary.replace(key_file)
+
+    print(f"{len(links):,} directed pairs, {n_pairs:,} with negative links. "
+          f"Excluded {numbers['excluded_self_loop_pairs']:,} self-loop pairs.")
+    repeat_pct = "undefined" if not n_pairs else f"{numbers['repeat_share']:.2%}"
+    print(f"Pairs with at least two negative links: {repeated:,} ({repeat_pct} of negative pairs).")
+    print(f"{triangles:,} undirected triangles; {numbers['shuffles']:,} fixed-structure shuffles.")
+    print_comparisons(comparisons)
+    print("Parallel hyperlinks stay aggregated by directed pair. Link-weighted rates give a pair "
+          "one vote per negative link; pair-weighted rates give each negative pair one vote.")
+    print("A neighbour can link to B in either direction with either label. For the attacker "
+          "variant the neighbour must send a negative link to B.")
+    print("These are patterns of co-occurrence in classifier labels. The test uses no event "
+          "ordering, so a difference from the shuffle does not establish transmission.")
+
+
+if __name__ == "__main__":
+    main()

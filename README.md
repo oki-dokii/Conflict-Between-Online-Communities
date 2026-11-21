@@ -123,3 +123,13 @@ A spike is one of the three largest positive percentage-point changes in negativ
 For each spike, the script ranks senders and directed pairs by negative-link count and separately by contribution to the rise. A group's contribution is its negative links divided by all links this month minus the corresponding share last month. These signed contributions sum to the overall change, and they can shift when the denominator changes even if the group sends the same number of negative links. The report prints names as dataset identifiers, along with concentration shares and the number of groups that contributed to the rise. Classifier errors can affect all of these counts.
 
 The table is saved to `results/monthly_link_stats.parquet`, spike details to `results/key_numbers.json` under `time`, and the figure to `figures/monthly_negative_links.png`.
+
+## `src/08_repeat.py`
+
+Run `python src/08_repeat.py` after the build. The script keeps parallel hyperlinks aggregated in the directed pair table and excludes self-loops. It plots the frequency of each observed negative-link count among negative pairs on log–log axes, reports how many of those pairs have at least two negative links, and computes reciprocity as the fraction of negative directed pairs with a negative reverse pair. A reciprocal dyad contributes both directions to that fraction.
+
+For every negative A→B pair, the neighbour test looks for at least one third subreddit C with a negative A→C link and any observed link between B and C. The attacker variant requires C→B to be negative. The code enumerates the undirected triangles once using igraph and retains orientations that can satisfy these conditions. A link-weighted rate gives each pair its number of negative links as weight. A pair-weighted rate gives every negative pair one vote. Multiple qualifying neighbours count as one hit on the anchor pair.
+
+The 500 seeded shuffles reassign signs over hyperlink slots and sum them back into their original pairs, preserving direction, pair multiplicities, and the network-wide number of negative labels. The script recalculates which pairs are negative and which neighbours send negative links to B after each shuffle. It reports null means, sample standard deviations, percentage-point differences, and z-scores. A rate with no negative pairs or a z-score with zero null variance is undefined. The shuffle can change each node's negative degree, so concentration around individual senders can affect the result. The test measures co-occurrence and uses no event chronology.
+
+The figure is saved to `figures/repeat_negative_pairs.png` and the frequency distribution and comparisons to `results/key_numbers.json` under `repeat`.

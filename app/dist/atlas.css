@@ -158,3 +158,67 @@ dialog::backdrop { background: #070d18ca; }
 .quick-picks button,.group-control select {background:#18203b;color:#e6e9f6;border:1px solid #414c69;border-radius:.4rem;padding:.3rem .48rem;font:inherit;font-size:.88rem}
 .group-control {display:flex;align-items:center;gap:.6rem;color:#c0cbe0;font-size:.9rem;padding:.25rem 1rem}
 .community-heading {margin:.7rem 0 .25rem;padding:.2rem .55rem;border-left:4px solid;color:#e7edfa;font-size:.92rem}
+
+/* Who links to whom? */
+.flow-area { position: relative; min-height: 260px; overflow-x: hidden; }
+.flow-area svg { display: block; width: 100%; height: auto; }
+.flow-empty { padding: 40px 0; }
+.flow-head { fill: var(--muted); font-size: 13px; font-weight: 600; }
+.flow-label { fill: var(--ink); font-size: 13px; }
+.flow-count { fill: var(--ink); font-size: 12px; font-weight: 650; paint-order: stroke; stroke: var(--bg); stroke-width: 4px; font-variant-numeric: tabular-nums; }
+.flow-centre { fill: var(--ink); font-size: 15px; font-weight: 700; }
+.flow-sub, .flow-more { fill: var(--muted); font-size: 12px; }
+.flow-hit { fill: transparent; }
+.flow-node { cursor: pointer; outline: none; }
+.flow-node:hover .flow-hit, .flow-node:focus-visible .flow-hit { fill: #252e4b; }
+.flow-node:focus-visible .flow-hit { stroke: var(--in); stroke-width: 2; }
+.flow-node.focused .flow-label { font-weight: 700; }
+
+/* Analytics */
+.insights-panel { padding-bottom: 30px; }
+#insights { display: grid; gap: 18px; }
+.insight-card { border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; overflow: hidden; }
+.insight-card h2 { font-size: 18px; }
+.insight-card h3 { font-size: 15px; margin-bottom: 8px; }
+.insight-card .lede { margin-top: 6px; font-size: 14px; }
+.insight-card svg { display: block; width: 100%; height: auto; margin-top: 6px; }
+.insight-controls { display: flex; flex-wrap: wrap; gap: 10px 18px; margin: 14px 0 6px; }
+.insight-control { display: grid; gap: 5px; }
+.control-label { font-size: 12px; color: var(--muted); }
+.stats { display: flex; flex-wrap: wrap; gap: 10px 26px; margin: 12px 0 6px; }
+.stat { display: grid; gap: 2px; min-width: 120px; max-width: 220px; }
+.stat strong { font-size: 24px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.stat span { font-size: 13px; color: var(--muted); }
+.stat small { font-size: 12px; color: #8f9ab4; }
+.verdict { margin: 10px 0 4px; padding: 10px 12px; border-left: 3px solid var(--out); background: #141b31; color: var(--ink); font-size: 14px; }
+.note { font-size: 12.5px; color: #9aa5bf; margin-top: 8px; }
+.chart-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+.chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.key-box { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+.key-line { width: 16px; height: 2px; display: inline-block; }
+.axis-text { fill: #9aa5bf; font-size: 11px; font-variant-numeric: tabular-nums; }
+.axis-title { fill: #9aa5bf; font-size: 12px; }
+.row-label { fill: var(--ink); font-size: 13px; }
+.row-sub { fill: #8f9ab4; font-size: 11px; }
+.value-text { fill: var(--ink); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.insight-card [tabindex]:focus-visible { outline: none; stroke: var(--in); stroke-width: 2; }
+.insight-card rect[tabindex]:hover { fill: #ffffff08; }
+.table-view { margin-top: 10px; font-size: 13px; }
+.table-view summary { cursor: pointer; color: var(--muted); }
+.table-view table, .compact { margin-top: 8px; }
+.compact { font-size: 13px; }
+.mini-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin-top: 12px; }
+.mini { border-top: 1px solid var(--line); padding-top: 10px; }
+.mini .stat strong { font-size: 21px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.insight-tip { position: fixed; z-index: 10; pointer-events: none; background: #070d19; border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; font-size: 13px; max-width: 300px; box-shadow: 0 4px 14px #0008; }
+.tip-title { color: var(--muted); margin-bottom: 4px; }
+.tip-row { display: flex; align-items: center; gap: 7px; margin: 2px 0; }
+.tip-row strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+.tip-key { width: 12px; height: 2px; flex: none; }
+.tip-row span:last-child { color: var(--muted); }
+@media(max-width:560px) {
+  .header-actions { flex-wrap: wrap; }
+  .insight-card { padding: 12px; }
+  .stat strong { font-size: 20px; }
+}

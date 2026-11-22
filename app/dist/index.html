@@ -7,6 +7,7 @@
 <title>Conflict Atlas · AIM608</title>
 <link rel="icon" href="/reddit.png">
 <link rel="stylesheet" href="/atlas.css">
+<script defer src="/insights.js"></script>
 <script defer src="/atlas.js"></script>
 </head>
 <body>
@@ -15,7 +16,9 @@
   <span class="course">Explore negative-labeled Reddit hyperlinks.</span>
   <nav class="header-actions" aria-label="Main navigation">
     <button data-view="atlas" aria-current="page">Atlas</button>
+    <button data-view="flow">Who links?</button>
     <button data-view="activity">Activity</button>
+    <button data-view="analytics">Analytics</button>
     <button id="methods">Methods</button>
   </nav>
   <span id="dataBadge" class="badge">Loading atlas…</span>
@@ -44,6 +47,7 @@
     <nav class="sidebar-section view-nav" aria-label="Atlas views">
       <h2>View</h2>
       <button data-view="atlas" aria-current="page"><span aria-hidden="true">⁙</span>Embedding (Atlas)</button>
+      <button data-view="flow"><span aria-hidden="true">⇄</span>Who links to whom?</button>
       <button data-view="activity"><span aria-hidden="true">⌁</span>Time Series</button>
       <button data-view="counterparts"><span aria-hidden="true">☷</span>Top Counterparts</button>
       <button data-view="links"><span aria-hidden="true">▦</span>Link Table</button>
@@ -61,6 +65,13 @@
       </label>
       <div class="map-area"><canvas id="map" aria-label="Embedding scatterplot. Choose a counterpart from the list to inspect its pair."></canvas><span id="mapHover" class="tooltip" hidden></span></div>
     </section>
+    <section id="flowPanel" class="panel flow-panel" aria-labelledby="flowTitle" hidden>
+      <header class="panel-head">
+        <div><h1 id="flowTitle">Who links to whom?</h1><p id="flowNote"></p></div>
+        <div class="legend" aria-label="Direction legend"><span><b class="in">➜</b> Links into the selection</span><span><b class="out">➜</b> Links out of the selection</span></div>
+      </header>
+      <div id="flow" class="flow-area"></div>
+    </section>
     <section id="timelinePanel" class="panel timeline" aria-labelledby="timeTitle">
       <header class="panel-head">
         <div><h2 id="timeTitle">Negative-Labeled Links Over Time</h2><p id="timelineNote"></p></div>
@@ -74,6 +85,10 @@
         </div>
       </header>
       <div class="time-area"><canvas id="time" aria-label="Monthly negative counts. Drag to select a date range or use the month menus."></canvas></div>
+    </section>
+    <section id="insightsPanel" class="panel insights-panel" aria-labelledby="insightsTitle" hidden>
+      <header class="panel-head"><div><h1 id="insightsTitle">Analytics</h1><p>Network-wide results from the full SNAP run. Labels come from a classifier; all comparisons are observational.</p></div></header>
+      <div id="insights"><p>Loading results…</p></div>
     </section>
     <section id="analyticsPanel" class="panel analytics-panel" aria-labelledby="analyticsTitle" hidden>
       <header class="panel-head"><div><h2 id="analyticsTitle"></h2><p id="analyticsNote"></p></div></header>

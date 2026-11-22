@@ -78,14 +78,20 @@ function install(raw) {
 
 function updateSuggestions(query) {
   if (!data) return;
-  const options = document.createDocumentFragment();
-  let matches = 0;
+  // Rank an exact match first, then prefix matches, then other substring matches,
+  // shortest names first within each tier, so "book" still offers r/books.
+  const matches = [];
   for (const [name] of data.nodes) {
-    if (!name.toLowerCase().includes(query)) continue;
+    const lower = name.toLowerCase();
+    const at = lower.indexOf(query);
+    if (at >= 0) matches.push([lower === query ? 0 : at === 0 ? 1 : 2, name.length, name]);
+  }
+  matches.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2].localeCompare(b[2]));
+  const options = document.createDocumentFragment();
+  for (const [, , name] of matches.slice(0, 30)) {
     const option = document.createElement("option");
     option.value = `r/${name}`;
     options.append(option);
-    if (++matches === 30) break;
   }
   $("communities").replaceChildren(options);
 }
@@ -127,7 +133,19 @@ function groupColour(id) {
   return id === null ? "#9298aa" : `hsl(${(id * 137.508 + 171) % 360} 67% 68%)`;
 }
 
+const TABLE_VIEWS = ["activity", "counterparts", "links"];
+
+function setPanels() {
+  $("mapPanel").hidden = view !== "atlas";
+  $("flowPanel").hidden = view !== "flow";
+  $("timelinePanel").hidden = !["atlas", "flow", "activity"].includes(view);
+  $("analyticsPanel").hidden = !TABLE_VIEWS.includes(view);
+  $("insightsPanel").hidden = view !== "analytics";
+}
+
 function render() {
+  setPanels();
+  if (view === "analytics" && window.renderInsights) window.renderInsights($("insights"));
   if (!data) return;
   const {peers, monthly, totals, visible} = summarize();
   if (counterpart === null || !visible.some(([id]) => id === counterpart)) counterpart = visible[0]?.[0] ?? null;
@@ -153,9 +171,6 @@ function render() {
     const active = duration === "all" ? low === 0 : low > 0 && high - low + 1 === Number(duration);
     button.setAttribute("aria-pressed", high === data.months.length - 1 && active);
   }
-  $("mapPanel").hidden = view !== "atlas";
-  $("timelinePanel").hidden = !["atlas", "activity"].includes(view);
-  $("analyticsPanel").hidden = view === "atlas";
   showPair(peers.get(counterpart));
   const list = document.createDocumentFragment();
   // The ranked pairs already respect both the date range and the direction filter.
@@ -204,8 +219,123 @@ function render() {
   $("counterparts").replaceChildren(list);
   $("counterparts").scrollTop = scroll;
   if (!$("mapPanel").hidden) drawMap(visible);
+  if (!$("flowPanel").hidden) drawFlow(peers);
   if (!$("timelinePanel").hidden) drawTime(monthly);
-  if (view !== "atlas") drawAnalytics(visible, monthly);
+  if (TABLE_VIEWS.includes(view)) drawAnalytics(visible, monthly);
+}
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+const FLOW_ROWS = 10;
+const flowAmber = "#c98415", flowViolet = "#8f6ae0";
+
+function svgEl(tag, attrs = {}, text) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, value);
+  if (text !== undefined) el.textContent = text;
+  return el;
+}
+
+function shorten(name, chars) {
+  return name.length > chars ? name.slice(0, Math.max(3, chars - 1)) + "…" : name;
+}
+
+function cubicPoint(p0, p1, p2, p3, t) {
+  const u = 1 - t;
+  return [0, 1].map(k => u ** 3 * p0[k] + 3 * u * u * t * p1[k] + 3 * u * t * t * p2[k] + t ** 3 * p3[k]);
+}
+
+// Direction graph: incoming counterparts on the left, the selection in the centre,
+// outgoing counterparts on the right. It follows the date range and direction filter.
+function drawFlow(peers) {
+  const container = $("flow");
+  const name = `r/${data.nodes[selected][0]}`;
+  const side = key => [...peers].filter(([id, pair]) => id !== selected && pair[key].neg > 0)
+    .sort((a, b) => b[1][key].neg - a[1][key].neg || data.nodes[a[0]][0].localeCompare(data.nodes[b[0]][0]));
+  const incoming = direction === "out" ? [] : side("in");
+  const outgoing = direction === "in" ? [] : side("out");
+  const selfPair = peers.get(selected);
+  const range = $("scopeDates").textContent;
+  $("flowNote").textContent = `Negative-labeled links between ${name} and its counterparts, ${range}. ` +
+    "Line width and labels give link counts; choose a counterpart to open its pair breakdown.";
+  container.replaceChildren();
+  if (!incoming.length && !outgoing.length) {
+    const empty = document.createElement("p");
+    empty.className = "flow-empty";
+    empty.textContent = `${name} has no negative-labeled links ${direction === "both" ? "" : `in the ${direction === "out" ? "outgoing" : "incoming"} direction `}in this date range.`;
+    container.append(empty);
+    return;
+  }
+  const shownIn = incoming.slice(0, FLOW_ROWS), shownOut = outgoing.slice(0, FLOW_ROWS);
+  const W = Math.max(300, container.clientWidth), narrow = W < 560;
+  const rowH = narrow ? 30 : 34, top = narrow ? 60 : 44;
+  const rows = Math.max(shownIn.length, shownOut.length, 3);
+  const H = top + rows * rowH + 40;
+  const cx = W / 2, cy = top + rows * rowH / 2, r = narrow ? 16 : 22;
+  const leftX = W * (narrow ? 0.34 : 0.3), rightX = W * (narrow ? 0.66 : 0.7);
+  const chars = Math.max(6, Math.floor((leftX - 18) / 7.2));
+  const max = Math.max(1, ...shownIn.map(([, p]) => p.in.neg), ...shownOut.map(([, p]) => p.out.neg));
+  const svg = svgEl("svg", {viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: "img",
+    "aria-label": `${name}: ${incoming.length} subreddits link in, ${outgoing.length} link out with negative labels`});
+  const defs = svgEl("defs");
+  for (const [id, colour] of [["flowIn", flowViolet], ["flowOut", flowAmber]]) {
+    const marker = svgEl("marker", {id, viewBox: "0 0 10 10", refX: 8, refY: 5, markerWidth: 9, markerHeight: 9,
+      markerUnits: "userSpaceOnUse", orient: "auto-start-reverse"});
+    marker.append(svgEl("path", {d: "M0,0 L10,5 L0,10 z", fill: colour}));
+    defs.append(marker);
+  }
+  svg.append(defs);
+  const header = (x, anchor, text, y) => svg.append(svgEl("text", {x, y, "text-anchor": anchor, class: "flow-head"}, text));
+  const headY = narrow ? 50 : 18;
+  if (direction !== "out") header(narrow ? 4 : leftX, narrow ? "start" : "end", narrow ? "Link in" : `Link to ${name}`, headY);
+  if (direction !== "in") header(narrow ? W - 4 : rightX, narrow ? "end" : "start", narrow ? "Linked from" : `Linked from ${name}`, headY);
+  const rowY = (i, count) => cy + (i - (count - 1) / 2) * rowH;
+  const edges = svgEl("g"), nodes = svgEl("g");
+  svg.append(edges, nodes);
+
+  const drawSide = (list, key) => {
+    const isIn = key === "in", x = isIn ? leftX : rightX, colour = isIn ? flowViolet : flowAmber;
+    list.forEach(([id, pair], i) => {
+      const y = rowY(i, list.length), focused = id === counterpart;
+      const width = 1.5 + 6 * Math.sqrt(pair[key].neg / max);
+      const mid = (x + cx) / 2;
+      const p0 = isIn ? [x + 6, y] : [cx + r + 3, cy];
+      const p3 = isIn ? [cx - r - 3, cy] : [x - 7, y];
+      const p1 = isIn ? [mid, y] : [mid, cy], p2 = isIn ? [mid, cy] : [mid, y];
+      edges.append(svgEl("path", {d: `M${p0} C${p1} ${p2} ${p3}`, fill: "none", stroke: colour,
+        "stroke-width": focused ? width + 1.5 : width, "stroke-opacity": focused || counterpart === null ? 0.95 : 0.6,
+        "marker-end": `url(#${isIn ? "flowIn" : "flowOut"})`}));
+      const [lx, ly] = cubicPoint(p0, p1, p2, p3, isIn ? (narrow ? 0.15 : 0.28) : (narrow ? 0.85 : 0.72));
+      edges.append(svgEl("text", {x: lx, y: ly + 4, "text-anchor": "middle", class: "flow-count"}, number(pair[key].neg)));
+      const g = svgEl("g", {class: "flow-node" + (focused ? " focused" : ""), tabindex: 0, role: "button",
+        "aria-label": `r/${data.nodes[id][0]}: ${pair[key].neg} negative of ${pair[key].total} links ${isIn ? "into" : "from"} ${name}`});
+      g.append(svgEl("title", {}, `r/${data.nodes[id][0]} · ${number(pair[key].neg)} negative of ${number(pair[key].total)} links (${percent(pair[key].neg, pair[key].total)})`));
+      g.append(svgEl("rect", {x: isIn ? 0 : x - 8, y: y - rowH / 2 + 2, width: isIn ? x + 8 : W - x + 8, height: rowH - 4, class: "flow-hit"}));
+      g.append(svgEl("circle", {cx: x, cy: y, r: focused ? 7 : 5.5, fill: groupColour(groupId(data.nodes[id])), stroke: "#0b1021", "stroke-width": 2}));
+      g.append(svgEl("text", {x: isIn ? x - 12 : x + 12, y: y + 4, "text-anchor": isIn ? "end" : "start", class: "flow-label"},
+        shorten(`r/${data.nodes[id][0]}`, chars)));
+      g.addEventListener("click", () => inspect(id));
+      g.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); inspect(id); } });
+      nodes.append(g);
+    });
+  };
+  drawSide(shownIn, "in");
+  drawSide(shownOut, "out");
+  const more = (count, x, anchor) => { if (count > 0) svg.append(svgEl("text", {x, y: H - 10, "text-anchor": anchor, class: "flow-more"}, `+${number(count)} more`)); };
+  more(incoming.length - shownIn.length, leftX, "end");
+  more(outgoing.length - shownOut.length, rightX, "start");
+
+  nodes.append(svgEl("circle", {cx, cy, r: r + 6, fill: "#c5a0ff22"}));
+  nodes.append(svgEl("circle", {cx, cy, r, fill: groupColour(groupId(data.nodes[selected])), stroke: "#fff", "stroke-width": 2}));
+  const totalIn = incoming.reduce((sum, [, p]) => sum + p.in.neg, 0), totalOut = outgoing.reduce((sum, [, p]) => sum + p.out.neg, 0);
+  // On narrow screens the caption sits above the graph so it never meets the count labels.
+  const captionY = narrow ? 20 : cy + r + 18;
+  nodes.append(svgEl("text", {x: cx, y: captionY, "text-anchor": "middle", class: "flow-centre"}, shorten(name, narrow ? 16 : 26)));
+  const summary = [direction !== "out" ? `${number(totalIn)} in` : "", direction !== "in" ? `${number(totalOut)} out` : ""].filter(Boolean).join(" · ");
+  nodes.append(svgEl("text", {x: cx, y: captionY + 16, "text-anchor": "middle", class: "flow-sub"}, summary));
+  if (selfPair && (selfPair.out.neg || selfPair.in.neg)) {
+    nodes.append(svgEl("text", {x: cx, y: cy - r - 10, "text-anchor": "middle", class: "flow-sub"}, `${number(selfPair.out.neg)} self-links`));
+  }
+  container.append(svg);
 }
 
 function inspect(id) {

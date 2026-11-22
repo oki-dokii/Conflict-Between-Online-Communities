@@ -40,7 +40,7 @@ Both rules put all-nonnegative triangles below their null means. Under the any-n
 | Question | Result on the SNAP files |
 | --- | --- |
 | Who sends negative links? | The top 1% of senders account for 78.75% of negative links. Ranking senders by all outgoing activity gives a top-1% share of 52.10%. |
-| Does an early negative label predict another? | Among all directed pairs active before 2016, 19.28% of previously negative pairs had a later negative link, versus 2.49% of other early pairs (risk ratio 7.73). |
+| Does an early negative label predict another? | Among all directed pairs active before 2016, 19.28% of previously negative pairs had a later negative link, versus 2.49% of other early pairs (risk ratio 7.73). Busier pairs have more chances to be labeled negative. Matching pairs on early link volume reduces this to 3.06 (Mantel–Haenszel, 95% CI 2.92–3.21), and also matching on later volume gives 2.74. Within the 1–19 early-link bins the ratio stays between 2.7 and 3.3. [Figure](figures/repeat_by_volume.png) |
 | Does that association extend to neighbours? | Among later active A→C pairs, 21.57% had a negative label when A had previously linked negatively to a neighbour of C, versus 7.14% otherwise. Requiring C to have linked negatively to that intermediary gives 27.95% versus 8.97%. These rates describe temporal association. |
 | How close are targets in shared-user space? | Among 31,237 candidate targets per source, the median rank was 16,306 for negative links, 7,959 for non-negative links and 15,596 for random pairs. At one record per directed pair the sign-group medians were 18,320 and 15,251. Smaller ranks mean closer audiences. |
 | Does language generalise to unseen sources? | On 171,699 rows from 11,173 held-out sources (9.58% negative), boosted-model PR-AUC fell from 0.6434 to 0.4150 after removing nine sentiment and emotion features. Logistic PR-AUC fell from 0.5126 to 0.3287. Both models predict classifier labels. |
@@ -85,6 +85,8 @@ python src/01_build.py
 for script in src/0[2-8]_*.py; do python "$script" || break; done
 python src/09_export_atlas.py --reuse-projection
 python src/10_course.py
+python src/11_repeat_by_volume.py
+python src/12_export_site_results.py
 ```
 
 The Atlas exporter reuses the checked-in coordinates. Run `python src/09_export_atlas.py` to fit on the current build's matched embedding rows instead. To fit and save the full published embedding set independently:
@@ -123,6 +125,8 @@ Budget several GiB of available RAM for the language analysis and run it on its 
 | 08 Repeat links | [Figure](figures/repeat_negative_pairs.png) | `repeat`: repeat frequency, reciprocity, neighbour and attacker rates, 500-shuffle summaries and z-scores |
 | 09 Projection and export | [`figures/embeddings_umap.png`](figures/embeddings_umap.png) | `umap`: fit settings and projected rows; `atlas`: exported nodes, months, and monthly directed pairs |
 | 10 Course extensions | [Precision–recall curve](figures/link_prediction_pr.png) | `course` contains DeepWalk comparisons, sender and recipient betweenness, and temporal link-label PR-AUC |
+| 11 Repeat links by volume | [Figure](figures/repeat_by_volume.png) | `repeat_by_volume`: the 08 temporal comparison within early-volume bins, Mantel–Haenszel ratios and a check that the crude ratio reproduces `repeat.temporal` |
+| 12 Site results | — | Writes `app/dist/results.json` for the Analytics tab; recomputed Lorenz Ginis must match `node_stats` |
 
 ### How to interpret the network tests
 
@@ -277,7 +281,7 @@ The figure is saved to `figures/repeat_negative_pairs.png` and the frequency dis
 
 ## Conflict Atlas demo
 
-From the project folder, serve the buildless app with `python -m http.server 8765 --bind 127.0.0.1 --directory app/dist` and open `http://127.0.0.1:8765`. The app loads the full SNAP export and displays the **SNAP data** badge. Use **Colour and group by** to switch between Louvain structural communities and shared-user embedding clusters. Matching group IDs share a colour on the map and a heading in the counterpart list. Unassigned nodes appear in grey. Search for a community, filter arrows by direction, and select a counterpart to inspect counts and negative fractions in both directions. Use the timeline brush, date presets, or month menus to narrow the period. The left sidebar shows dataset node count, negative links in the selected period, and the active dates. Activity lists monthly directional totals and rates. Top Counterparts ranks negative-labeled links, and Link Table shows paginated monthly counts per directed pair.
+From the project folder, serve the buildless app with `python -m http.server 8765 --bind 127.0.0.1 --directory app/dist` and open `http://127.0.0.1:8765`. The app loads the full SNAP export and displays the **SNAP data** badge. Use **Colour and group by** to switch between Louvain structural communities and shared-user embedding clusters. **Who links to whom?** draws the selected subreddit in the centre, the ten largest incoming counterparts on the left and the ten largest outgoing counterparts on the right. Line width and labels give negative-link counts for the active date range and direction filter, and selecting a counterpart opens its pair breakdown. **Analytics** shows the network-wide results: switch the balance comparison between the two sign rules and the two null models, explore the Lorenz curves, repeat conflict by early volume, language effects and the course extensions. Matching group IDs share a colour on the map and a heading in the counterpart list. Unassigned nodes appear in grey. Search for a community, filter arrows by direction, and select a counterpart to inspect counts and negative fractions in both directions. Use the timeline brush, date presets, or month menus to narrow the period. The left sidebar shows dataset node count, negative links in the selected period, and the active dates. Activity lists monthly directional totals and rates. Top Counterparts ranks negative-labeled links, and Link Table shows paginated monthly counts per directed pair.
 
 After the build and `04_communities.py`, run `python src/09_export_atlas.py --reuse-projection` (this mode reads saved coordinates and requires no UMAP installation) and select `data/processed/atlas_data.json` with **Load data**. To refresh the bundled dataset for publication, use `gzip -nc data/processed/atlas_data.json > app/dist/atlas-data.json.gz`. Each node stores its name, UMAP coordinates, structural community ID and embedding cluster ID. Missing assignments are JSON null. Older three-field exports still open through **Load data**. The exporter groups original link rows by UTC month and directed pair, retaining both negative counts and total counts. Missing embeddings leave communities without map positions, but those communities still have timelines and links.
 
@@ -302,6 +306,14 @@ The [precomputed coordinate table](data/processed/umap_2d.parquet) contains `sub
 The UMAP figure and coordinates are included here. The other figures and statistics in the index are generated by their scripts from the two hyperlink TSVs.
 
 The Atlas distinguishes illustrative and SNAP exports. Its left rail shows dataset size and in-range negative links. Its right rail reports counts for the selected node and a pair-level breakdown with all-link denominators. The timeline and Activity calculate monthly directional counts, and date controls also filter Top Counterparts and the paginated Link Table.
+
+## `src/11_repeat_by_volume.py`
+
+Run `python src/11_repeat_by_volume.py` after the Atlas export. It repeats the 08 temporal comparison (directed pairs linked before 2016-01, later negative link from 2016-01 on, self-loops excluded) using the export's monthly pair counts, so it runs without the raw TSVs. It first checks that the crude ratio reproduces `repeat.temporal`. It then compares pairs with and without an early negative label within bins of early link volume (1, 2, 3–4, 5–9, 10–19, 20–49, 50–99, 100+) and pools the bins with a Mantel–Haenszel risk ratio and Greenland–Robins interval. A second pooled ratio uses pairs active in both periods and stratifies on early and later volume together. Use `--cutoff YYYY-MM` to move the split and `--atlas` to pick an export. Results go under `repeat_by_volume` and the figure to `figures/repeat_by_volume.png`. Bins with few pairs give imprecise ratios, and volume matching leaves other differences between pairs unadjusted.
+
+## `src/12_export_site_results.py`
+
+Run `python src/12_export_site_results.py` after 03, 06, 08, 10 and 11. It copies the balance, language, course and repeat results the Analytics tab needs into `app/dist/results.json` and recomputes Lorenz curves from the Atlas export. It stops if a recomputed Gini differs from `node_stats`.
 
 ## Course extensions
 

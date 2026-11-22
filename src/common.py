@@ -71,3 +71,21 @@ def load_embeddings(directory=PROCESSED):
 def load_graph(directory=PROCESSED):
     """Read the directed, aggregated igraph graph."""
     return ig.Graph.Read_GraphML(str(Path(directory) / "graph.graphml"))
+
+
+def save_numbers(section, numbers):
+    """Keep independently completed analyses in the shared, one-line JSON snapshot."""
+    import json
+    from tempfile import TemporaryDirectory
+    from filelock import FileLock
+
+    RESULTS.mkdir(parents=True, exist_ok=True)
+    path = RESULTS / "key_numbers.json"
+    with FileLock(str(path) + ".lock"):
+        data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        data[section] = numbers
+        with TemporaryDirectory(dir=RESULTS) as stage:
+            temp = Path(stage) / path.name
+            temp.write_text(json.dumps(data, separators=(",", ":"), allow_nan=False) + "\n",
+                            encoding="utf-8")
+            temp.replace(path)

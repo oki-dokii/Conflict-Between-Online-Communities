@@ -1,9 +1,6 @@
 """Track monthly negative-link activity and decompose rises in negative fraction."""
 
 import argparse
-import json
-from pathlib import Path
-from tempfile import TemporaryDirectory
 
 import matplotlib
 
@@ -14,7 +11,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import PercentFormatter
 import pandas as pd
 
-from common import FIGURES, RESULTS, load_edges
+from common import save_numbers, FIGURES, RESULTS, load_edges
 
 
 TOP_SENDERS = 10
@@ -179,18 +176,11 @@ def main():
     }
     FIGURES.mkdir(parents=True, exist_ok=True)
     RESULTS.mkdir(parents=True, exist_ok=True)
-    key_file = RESULTS / "key_numbers.json"
-    keys = json.loads(key_file.read_text(encoding="utf-8")) if key_file.exists() else {}
-    keys["time"] = numbers
     output = monthly.rename_axis("month").reset_index()
     output["month"] = output["month"].astype(str)
     output.to_parquet(RESULTS / "monthly_link_stats.parquet", index=False)
     plot_monthly(monthly, FIGURES / "monthly_negative_links.png")
-    with TemporaryDirectory(prefix=".time-", dir=RESULTS) as work:
-        summary = Path(work) / key_file.name
-        summary.write_text(json.dumps(keys, separators=(",", ":"), allow_nan=False) + "\n",
-                           encoding="utf-8")
-        summary.replace(key_file)
+    save_numbers("time", numbers)
 
     print(f"{len(edges):,} links, {len(negative):,} negative, "
           f"{numbers['months_with_links']:,}/{len(monthly):,} UTC months with links "

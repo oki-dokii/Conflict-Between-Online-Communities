@@ -3,7 +3,6 @@
 import argparse
 import json
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
 import matplotlib
 
@@ -20,7 +19,7 @@ from sklearn.model_selection import StratifiedGroupKFold
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
-from common import FIGURES, PROCESSED, RESULTS, ROOT, SEED, load_edges, read_feature_names
+from common import save_numbers, FIGURES, PROCESSED, RESULTS, ROOT, SEED, load_edges, read_feature_names
 
 
 TOP_FEATURES = 15
@@ -186,10 +185,10 @@ def bootstrap_top(values, negative, groups, top_columns):
     return intervals, np.isfinite(samples).sum(axis=0)
 
 
-def split_posts(negative, groups):
+def split_sources(negative, groups):
     n_splits = min(5, len(np.unique(groups[negative])), len(np.unique(groups[~negative])))
     if n_splits < 2:
-        raise ValueError("Need at least two distinct posts with each label for the grouped split.")
+        raise ValueError("Need at least two distinct source subreddits with each label for the grouped split.")
     splitter = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=SEED)
     for train, test in splitter.split(negative, negative, groups):
         if np.unique(negative[train]).size == np.unique(negative[test]).size == 2:
@@ -281,13 +280,16 @@ def main():
     args = parser.parse_args()
     try:
         features = read_feature_names(args.feature_names, reserved={"post_id", "link_sentiment"})
-        edges = load_edges(columns=["post_id", "link_sentiment", *features])
+        edges = load_edges(columns=["source", "post_id", "link_sentiment", *features])
         values = edges[features].to_numpy(dtype=np.float64)
         negative = edges["link_sentiment"].eq(-1).to_numpy(dtype=bool)
         groups = pd.factorize(edges["post_id"])[0]
         if min(negative.sum(), (~negative).sum()) < 2:
             raise ValueError("Need at least two hyperlink rows with each sign.")
-        train, test = split_posts(negative, groups)
+        sources = pd.factorize(edges["source"])[0]
+        train, test = split_sources(negative, sources)
+        if np.intersect1d(groups[train], groups[test]).size:
+            raise ValueError("A post ID appears under multiple sources across the split.")
     except (OSError, ValueError) as error:
         parser.exit(1, f"Could not prepare language analysis. Run src/01_build.py first. {error}\n")
 
@@ -304,6 +306,9 @@ def main():
     models, importances, importance_rows = fit_models(values, negative, train, test, features)
     numbers = {
         "rows": len(edges), "posts": int(np.unique(groups).size), "negative_rows": int(negative.sum()),
+        "split_group": "source_subreddit",
+        "train_sources": int(np.unique(sources[train]).size),
+        "test_sources": int(np.unique(sources[test]).size),
         "train_rows": len(train), "test_rows": len(test),
         "train_negative_share": float(negative[train].mean()),
         "test_negative_share": float(negative[test].mean()),
@@ -316,21 +321,15 @@ def main():
 
     FIGURES.mkdir(parents=True, exist_ok=True)
     RESULTS.mkdir(parents=True, exist_ok=True)
-    key_file = RESULTS / "key_numbers.json"
-    key_numbers = json.loads(key_file.read_text(encoding="utf-8")) if key_file.exists() else {}
-    key_numbers["language"] = numbers
     effects.to_parquet(PROCESSED / "language_effects.parquet", index=False)
     importances.to_parquet(PROCESSED / "language_importances.parquet", index=False)
     plot_effects(top, FIGURES / "language_top_features.png")
-    with TemporaryDirectory(prefix=".language-", dir=RESULTS) as work:
-        summary = Path(work) / key_file.name
-        summary.write_text(json.dumps(key_numbers, separators=(",", ":"), allow_nan=False) + "\n",
-                           encoding="utf-8")
-        summary.replace(key_file)
+    save_numbers("language", numbers)
 
     print(f"{len(edges):,} labeled rows across {numbers['posts']:,} posts. "
           f"Train/test: {len(train):,}/{len(test):,} rows, "
           f"negative shares {numbers['train_negative_share']:.2%}/{numbers['test_negative_share']:.2%}.")
+    print(f"Held out {numbers['test_sources']:,} sources unseen during training.")
     print(f"Test negative prevalence (average-precision baseline): {numbers['test_negative_share']:.4f}.")
     print(f"Top {len(top)} by absolute effect (negative minus nonnegative, "
           f"{BOOTSTRAPS} post-bootstrap draws):")

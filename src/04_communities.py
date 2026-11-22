@@ -2,10 +2,7 @@
 
 import argparse
 from itertools import combinations
-import json
-from pathlib import Path
 import random
-from tempfile import TemporaryDirectory
 
 import igraph as ig
 import numpy as np
@@ -13,7 +10,7 @@ import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score, silhouette_score
 
-from common import PROCESSED, RESULTS, SEED, load_embeddings, load_graph, load_pairs
+from common import save_numbers, PROCESSED, RESULTS, SEED, load_embeddings, load_graph, load_pairs
 
 
 LOUVAIN_SEEDS = range(SEED, SEED + 5)
@@ -202,15 +199,8 @@ def main():
         "structural_links": structural_links, "embedding_links": embedding_links,
     }
     RESULTS.mkdir(parents=True, exist_ok=True)
-    key_file = RESULTS / "key_numbers.json"
-    key_numbers = json.loads(key_file.read_text(encoding="utf-8")) if key_file.exists() else {}
-    key_numbers["communities"] = numbers
     nodes.reset_index().to_parquet(PROCESSED / "communities.parquet", index=False)
-    with TemporaryDirectory(prefix=".communities-", dir=RESULTS) as work:
-        summary = Path(work) / key_file.name
-        summary.write_text(json.dumps(key_numbers, separators=(",", ":"), allow_nan=False) + "\n",
-                           encoding="utf-8")
-        summary.replace(key_file)
+    save_numbers("communities", numbers)
 
     print(f"Largest weak component: {len(names):,}/{graph.vcount():,} subreddits "
           f"({numbers['dropped_nodes']:,} dropped).")

@@ -5,4 +5,4 @@ data/raw/*
 data/processed/*
 !data/processed/.gitkeep
 !data/processed/umap_2d.parquet
-results/monthly_link_stats.parquet
+results/key_numbers.json.lock

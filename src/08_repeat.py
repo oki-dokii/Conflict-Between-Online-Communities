@@ -3,8 +3,6 @@
 import argparse
 import json
 from itertools import permutations
-from pathlib import Path
-from tempfile import TemporaryDirectory
 
 import igraph as ig
 import matplotlib
@@ -13,8 +11,11 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+from numba import njit
+from scipy.sparse import csr_matrix
 
-from common import FIGURES, RESULTS, SEED, load_pairs
+from common import save_numbers, FIGURES, RESULTS, SEED, load_edges, load_pairs
 
 
 SHUFFLES = 500
@@ -139,9 +140,75 @@ def print_comparisons(result):
               f"± {row['null_std']:.2%} SD, difference {row['observed_minus_null_pp']:+.2f} pp, z {z}.")
 
 
+@njit
+def share_neighbour(a, c, ptr, idx, other_ptr, other_idx):
+    result = np.zeros(len(a), dtype=np.bool_)
+    for row in range(len(a)):
+        i, j = ptr[a[row]], other_ptr[c[row]]
+        while i < ptr[a[row]+1] and j < other_ptr[c[row]+1]:
+            x, y = idx[i], other_idx[j]
+            if x == y:
+                result[row] = True
+                break
+            if x < y:
+                i += 1
+            else:
+                j += 1
+    return result
+
+
+def risk_contrast(exposed, outcome):
+    result = {}
+    for label, mask in (("exposed", exposed), ("unexposed", ~exposed)):
+        count = int(mask.sum())
+        result[label] = {"pairs": count, "later_negative_pairs": int(outcome[mask].sum()),
+                         "risk": float(outcome[mask].mean()) if count else None}
+    a, b = (result[k]["risk"] for k in ("exposed", "unexposed"))
+    result["difference_pp"] = 100 * (a - b) if a is not None and b is not None else None
+    result["risk_ratio"] = a / b if a is not None and b else None
+    return result
+
+
+def temporal_test(edges, cutoff):
+    edges = edges.loc[edges.source != edges.target]
+    early = edges.loc[edges.timestamp < cutoff]
+    late = edges.loc[edges.timestamp >= cutoff]
+    if early.empty or late.empty:
+        raise ValueError("The cutoff must leave non-loop links in both periods.")
+    def paired(frame):
+        return frame.groupby(["source", "target"]).link_sentiment.min().eq(-1)
+    before, after = paired(early), paired(late)
+    names = pd.Index(sorted(set(edges.source) | set(edges.target)))
+    def endpoints(index):
+        return tuple(names.get_indexer(index.get_level_values(i)) for i in (0, 1))
+    def adjacency(index):
+        a, b = endpoints(index)
+        return csr_matrix((np.ones(len(a), dtype=bool), (a, b)), shape=(len(names), len(names)))
+    negative = adjacency(before.index[before])
+    all_early = adjacency(before.index)
+    neighbours = all_early.maximum(all_early.T).tocsr()
+    neighbours.sort_indices()
+    a, c = endpoints(after.index)
+    def exposed(graph):
+        return share_neighbour(a, c, negative.indptr, negative.indices, graph.indptr, graph.indices)
+    return {
+        "cutoff_utc": cutoff.isoformat(), "early_links": len(early), "late_links": len(late),
+        "early_pairs_including_later_inactive": risk_contrast(before.to_numpy(),
+            after.reindex(before.index, fill_value=False).to_numpy()),
+        "later_active_pairs": {
+            "same_pair": risk_contrast(before.reindex(after.index, fill_value=False).to_numpy(), after.to_numpy()),
+            "early_neighbour": risk_contrast(exposed(neighbours), after.to_numpy()),
+            "early_attacker": risk_contrast(exposed(negative), after.to_numpy())},
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.parse_args()
+    parser.add_argument("--cutoff", default="2016-01-01", help="Start of follow-up (UTC)")
+    args = parser.parse_args()
+    cutoff = pd.to_datetime(args.cutoff, utc=True)
+    temporal = temporal_test(load_edges(columns=["source", "target", "link_sentiment", "timestamp"]), cutoff)
+    print("Time-ordered directed-pair risks:", json.dumps(temporal), flush=True)
     try:
         pairs = load_pairs(columns=["source", "target", "n_pos", "n_neg"])
     except FileNotFoundError as error:
@@ -163,19 +230,12 @@ def main():
         "repeat_share": repeated / n_pairs if n_pairs else None,
         "negative_links_per_pair_distribution": dict(zip(map(int, counts), map(int, frequencies))),
         "undirected_triangles": triangles, "shuffles": SHUFFLES if comparisons is not None else 0,
-        "comparisons": comparisons,
+        "comparisons": comparisons, "temporal": temporal,
     }
     FIGURES.mkdir(parents=True, exist_ok=True)
     RESULTS.mkdir(parents=True, exist_ok=True)
-    key_file = RESULTS / "key_numbers.json"
-    key_numbers = json.loads(key_file.read_text(encoding="utf-8")) if key_file.exists() else {}
-    key_numbers["repeat"] = numbers
     plot_repeats(counts, frequencies, FIGURES / "repeat_negative_pairs.png")
-    with TemporaryDirectory(prefix=".repeat-", dir=RESULTS) as work:
-        summary = Path(work) / key_file.name
-        summary.write_text(json.dumps(key_numbers, separators=(",", ":"), allow_nan=False) + "\n",
-                           encoding="utf-8")
-        summary.replace(key_file)
+    save_numbers("repeat", numbers)
 
     print(f"{len(links):,} directed pairs, {n_pairs:,} with negative links. "
           f"Excluded {numbers['excluded_self_loop_pairs']:,} self-loop pairs.")
@@ -187,7 +247,7 @@ def main():
           "one vote per negative link; pair-weighted rates give each negative pair one vote.")
     print("A neighbour can link to B in either direction with either label. For the attacker "
           "variant the neighbour must send a negative link to B.")
-    print("These are patterns of co-occurrence in classifier labels. The test uses no event "
+    print("These are patterns of co-occurrence in classifier labels. The pooled shuffle uses no event "
           "ordering, so a difference from the shuffle does not establish transmission.")
 
 

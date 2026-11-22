@@ -1,10 +1,7 @@
 """Compare signed triangle counts with a fixed-graph sign-shuffle null."""
 
 import argparse
-import json
 from math import comb
-from pathlib import Path
-from tempfile import TemporaryDirectory
 
 import igraph as ig
 import matplotlib
@@ -13,8 +10,9 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import numpy as np
+from numba import njit
 
-from common import FIGURES, RESULTS, SEED, load_pairs
+from common import save_numbers, FIGURES, RESULTS, SEED, load_pairs
 
 
 SHUFFLES = 1000
@@ -55,12 +53,42 @@ def count_types(signs, triangle_edges):
     return np.bincount(totals, minlength=4)
 
 
-def simulate(signs, triangle_edges, rng):
-    observed = count_types(signs, triangle_edges)
-    null = np.empty((SHUFFLES, 4), dtype=np.int64)
-    for draw in range(SHUFFLES):
-        null[draw] = count_types(rng.permutation(signs), triangle_edges)
+@njit
+def shuffle_senders(slots, starts, negatives, totals, triangles, draws, seed):
+    # Partial Fisher–Yates samples distinct outgoing hyperlink slots for each sender.
+    np.random.seed(seed)
+    counts = np.empty((2, draws, 4), dtype=np.int64)
+    for draw in range(draws):
+        assigned = np.zeros(len(totals), dtype=np.int64)
+        for group in range(len(negatives)):
+            end = starts[group + 1]
+            for idx in range(starts[group], starts[group] + negatives[group]):
+                pick = np.random.randint(idx, end)
+                slots[idx], slots[pick] = slots[pick], slots[idx]
+                assigned[slots[idx]] += 1
+        for rule in range(2):
+            signs = assigned > 0 if rule == 0 else assigned > totals - assigned
+            bins = np.zeros(4, dtype=np.int64)
+            for a, b, c in triangles.T:
+                bins[int(signs[a]) + int(signs[b]) + int(signs[c])] += 1
+            counts[rule, draw] = bins
+    return counts
 
+
+def sender_null(pairs, graph, triangles):
+    links = pairs.loc[pairs.source != pairs.target].sort_values(["source", "target"]).copy()
+    links["capacity"] = links.n_pos + links.n_neg
+    grouped = links.groupby("source", sort=False)[["capacity", "n_neg"]].sum()
+    ids = {name: i for i, name in enumerate(graph.vs["name"])}
+    endpoints = list(zip(links.source.map(ids), links.target.map(ids)))
+    slots = np.repeat(graph.get_eids(endpoints), links.capacity.to_numpy()).astype(np.int64)
+    starts = np.r_[0, grouped.capacity.cumsum()].astype(np.int64)
+    totals = np.asarray(graph.es["n_pos"]) + np.asarray(graph.es["n_neg"])
+    return shuffle_senders(slots, starts, grouped.n_neg.to_numpy(), totals, triangles, SHUFFLES, SEED)
+
+
+def summarize_null(signs, triangle_edges, null):
+    observed = count_types(signs, triangle_edges)
     n_triangles = int(observed.sum())
     n_negative = int(signs.sum())
     p_neg = n_negative / len(signs) if len(signs) else None
@@ -104,14 +132,17 @@ def simulate(signs, triangle_edges, rng):
 def plot_counts(results, output):
     fig, axes = plt.subplots(1, 2, figsize=(10.4, 4.4), sharey=True, layout="constrained")
     x = np.arange(4)
-    width = 0.36
+    width = 0.25
     for ax, (label, stats) in zip(axes, results.items()):
         types = stats["types"]
-        ax.bar(x - width / 2, [row["observed"] for row in types], width,
+        ax.bar(x - width, [row["observed"] for row in types], width,
                label="Observed", color="#35629A", zorder=3)
-        ax.bar(x + width / 2, [row["null_mean"] for row in types], width,
+        ax.bar(x, [row["null_mean"] for row in types], width,
                yerr=[row["null_std"] for row in types], capsize=3,
-               label="Shuffle mean ± 1 SD", color="#D9853B", zorder=3)
+               label="Global ± 1 SD", color="#D9853B", zorder=3)
+        sender = stats["sender_conditioned"]["types"]
+        ax.bar(x + width, [r["null_mean"] for r in sender], width,
+               yerr=[r["null_std"] for r in sender], capsize=3, label="Within sender ± 1 SD", color="#54866B")
         ax.set(title=label, xlabel="Negative edges per triangle", xticks=x)
         ax.grid(axis="y", alpha=0.2, zorder=0)
         ax.spines[["top", "right"]].set_visible(False)
@@ -180,10 +211,16 @@ def main():
         "Any negative link": n_neg > 0,
         "Majority negative": n_neg > n_pos,
     }
-    results = {
-        label: simulate(negative.astype(np.int8), triangles, np.random.default_rng(SEED))
-        for label, negative in rules.items()
-    }
+    conditioned = sender_null(pairs, graph, triangles)
+    results = {}
+    for index, (label, negative) in enumerate(rules.items()):
+        signs = negative.astype(np.int8)
+        rng = np.random.default_rng(SEED)
+        global_null = np.array([count_types(rng.permutation(signs), triangles)
+                                for _ in range(SHUFFLES)])
+        stats = summarize_null(signs, triangles, global_null)
+        stats["sender_conditioned"] = summarize_null(signs, triangles, conditioned[index])
+        results[label] = stats
     numbers = {
         "nodes": graph.vcount(),
         "undirected_edges": graph.ecount(),
@@ -197,15 +234,8 @@ def main():
 
     FIGURES.mkdir(parents=True, exist_ok=True)
     RESULTS.mkdir(parents=True, exist_ok=True)
-    key_file = RESULTS / "key_numbers.json"
-    all_numbers = json.loads(key_file.read_text(encoding="utf-8")) if key_file.exists() else {}
-    all_numbers["balance"] = numbers
     plot_counts(results, FIGURES / "structural_balance.png")
-    with TemporaryDirectory(prefix=".balance-", dir=RESULTS) as work:
-        summary = Path(work) / key_file.name
-        summary.write_text(json.dumps(all_numbers, separators=(",", ":"), allow_nan=False) + "\n",
-                           encoding="utf-8")
-        summary.replace(key_file)
+    save_numbers("balance", numbers)
 
     print(f"{graph.vcount():,} nodes, {graph.ecount():,} undirected edges, "
           f"{triangles.shape[1]:,} triangles, {SHUFFLES:,} shuffles per rule.")
@@ -213,7 +243,8 @@ def main():
           f"Majority rule assigns {numbers['majority_ties_labeled_nonnegative']:,} ties "
           "to the nonnegative sign.")
     for label, stats in results.items():
-        explain(label, stats)
+        explain(label + " / global shuffle", stats)
+        explain(label + " / within-sender shuffle", stats["sender_conditioned"])
     print("\nThe sign shuffle keeps the graph and the overall number of negative edges fixed. "
           "The probability-only expectation assumes independent signs. "
           "The comparison measures triangle patterns in classifier labels. "

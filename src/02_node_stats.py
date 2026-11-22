@@ -1,10 +1,7 @@
 """Measure subreddit activity and the concentration of negative link labels."""
 
 import argparse
-import json
-from pathlib import Path
 import random
-from tempfile import TemporaryDirectory
 
 import matplotlib
 
@@ -14,7 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from common import FIGURES, PROCESSED, RESULTS, SEED, load_pairs
+from common import save_numbers, FIGURES, PROCESSED, RESULTS, SEED, load_pairs
 
 
 MIN_OUT_LINKS = 20
@@ -142,16 +139,9 @@ def main():
 
     FIGURES.mkdir(parents=True, exist_ok=True)
     RESULTS.mkdir(parents=True, exist_ok=True)
-    key_file = RESULTS / "key_numbers.json"
-    key_numbers = json.loads(key_file.read_text(encoding="utf-8")) if key_file.exists() else {}
-    key_numbers["node_stats"] = numbers
     nodes.to_parquet(PROCESSED / "node_stats.parquet", index=False)
     plot_lorenz(metrics, FIGURES / "lorenz_out_links.png")
-    with TemporaryDirectory(prefix=".node-stats-", dir=RESULTS) as work:
-        summary = Path(work) / key_file.name
-        summary.write_text(json.dumps(key_numbers, separators=(",", ":"), allow_nan=False) + "\n",
-                           encoding="utf-8")
-        summary.replace(key_file)
+    save_numbers("node_stats", numbers)
     print_numbers(numbers)
 
 

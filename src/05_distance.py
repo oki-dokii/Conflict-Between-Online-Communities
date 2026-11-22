@@ -2,9 +2,6 @@
 
 import argparse
 from itertools import combinations
-import json
-from pathlib import Path
-from tempfile import TemporaryDirectory
 
 import matplotlib
 
@@ -13,9 +10,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy.stats import ks_2samp
+from scipy.stats import ks_2samp, rankdata
 
-from common import FIGURES, PROCESSED, RESULTS, SEED, load_edges, load_embeddings, load_pairs
+from common import save_numbers, FIGURES, PROCESSED, RESULTS, SEED, load_edges, load_embeddings, load_pairs
 
 
 RANDOM_PAIRS = 100_000
@@ -66,7 +63,7 @@ def random_similarities(unit_vectors, degrees):
     n = len(unit_vectors)
     if n < 2:
         return pd.DataFrame({"cosine_similarity": np.array([], dtype=float),
-                             "source_degree": np.array([], dtype=int)})
+                             "source_degree": np.array([], dtype=int), "source_index": [], "target_index": []})
     rng = np.random.default_rng(SEED)
     source = rng.integers(n, size=RANDOM_PAIRS)
     target = rng.integers(n - 1, size=RANDOM_PAIRS)
@@ -74,8 +71,25 @@ def random_similarities(unit_vectors, degrees):
     target += target >= source
     return pd.DataFrame({
         "cosine_similarity": cosines(unit_vectors, source, target),
-        "source_degree": degrees[source],
+        "source_degree": degrees[source], "source_index": source, "target_index": target,
     })
+
+
+def neighbour_ranks(unit, sources, targets):
+    """Rank among all other covered nodes by descending cosine, averaging exact ties."""
+    ranks = np.full(len(sources), np.nan)
+    order = np.argsort(sources, kind="stable")
+    unique, starts = np.unique(sources[order], return_index=True)
+    ends = np.r_[starts[1:], len(order)]
+    for first in range(0, len(unique), 32):
+        ids = unique[first:first + 32]
+        scores = unit[ids] @ unit.T
+        scores[np.arange(len(ids)), ids] = -np.inf
+        for row, node in enumerate(ids):
+            idx = order[starts[first + row]:ends[first + row]]
+            idx = idx[targets[idx] != node]
+            ranks[idx] = rankdata(-scores[row], method="average")[targets[idx]]
+    return ranks
 
 
 def group_values(edges, baseline):
@@ -198,11 +212,16 @@ def main():
     unit_vectors = vectors[nonzero] / norms[nonzero, None]
     degrees = node_degree(pairs).reindex(names, fill_value=0).to_numpy(dtype=np.int64)
     eligible = edge_similarities(edges, names, unit_vectors, degrees)
+    random_pairs = random_similarities(unit_vectors, degrees)
+    ranks = neighbour_ranks(unit_vectors,
+        np.r_[names.get_indexer(eligible.source), random_pairs.source_index.to_numpy(dtype=int)],
+        np.r_[names.get_indexer(eligible.target), random_pairs.target_index.to_numpy(dtype=int)])
+    eligible["target_rank"] = ranks[:len(eligible)]
+    random_pairs["target_rank"] = ranks[len(eligible):]
     # The earliest link supplies the sign, with ties resolved by build row order.
     deduplicated = eligible.sort_values("timestamp", kind="stable").drop_duplicates(
         ["source", "target"]
     )
-    random_pairs = random_similarities(unit_vectors, degrees)
     all_links = analyze(eligible, random_pairs)
     pair_links = analyze(deduplicated, random_pairs)
     numbers = {
@@ -214,19 +233,20 @@ def main():
         "all_links": all_links, "deduplicated_links": pair_links,
     }
 
+    for label, table in (("all_links", eligible), ("deduplicated_links", deduplicated)):
+        groups = {key: table.loc[table.link_sentiment.eq(sign), "target_rank"].dropna().to_numpy()
+                  for key, sign in (("negative", -1), ("neutral_or_positive", 1))}
+        groups["random"] = random_pairs.target_rank.to_numpy()
+        numbers[label]["target_rank"] = compare(groups)
+        print(label, "median target rank (1 = nearest):",
+              {key: stats["median"] for key, stats in numbers[label]["target_rank"]["groups"].items()})
+    numbers["other_rank_candidates_per_source"] = max(len(names) - 1, 0)
     FIGURES.mkdir(parents=True, exist_ok=True)
     RESULTS.mkdir(parents=True, exist_ok=True)
-    key_file = RESULTS / "key_numbers.json"
-    key_numbers = json.loads(key_file.read_text(encoding="utf-8")) if key_file.exists() else {}
-    key_numbers["distance"] = numbers
     eligible.to_parquet(PROCESSED / "edge_similarities.parquet", index=False)
     plot_densities(group_values(eligible, random_pairs), group_values(deduplicated, random_pairs),
                    FIGURES / "distance_densities.png")
-    with TemporaryDirectory(prefix=".distance-", dir=RESULTS) as work:
-        summary = Path(work) / key_file.name
-        summary.write_text(json.dumps(key_numbers, separators=(",", ":"), allow_nan=False) + "\n",
-                           encoding="utf-8")
-        summary.replace(key_file)
+    save_numbers("distance", numbers)
 
     print(f"Cosine computed for {len(eligible):,}/{len(edges):,} links, including "
           f"{numbers['self_links_with_cosine']:,} self-links.")

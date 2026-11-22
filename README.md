@@ -26,6 +26,30 @@ For slides, quote the counts printed by `01_build.py` and saved under `build.sub
 
 Each row is a directed hyperlink record. Its label is −1 for negative or +1 for neutral or positive. The same post ID can contribute several rows. Text properties describe the source post; the raw post text is unavailable. Embeddings describe similarity in user participation, and label errors can affect every signed comparison. Subreddit names are dataset identifiers.
 
+## Findings for the presentation
+
+Across 2,405,288 triangles, the balance result depends on both the collapse rule and the null. Each null column below is the mean of 1,000 draws.
+
+| Sign rule for an undirected pair | Observed balanced | Global shuffle | Within-sender shuffle | All-nonnegative triangle z, global / within sender |
+| --- | ---: | ---: | ---: | ---: |
+| Any negative hyperlink | 57.06% | 70.52% | 57.10% | −107.95 / −0.55 |
+| Strict negative majority (ties non-negative) | 84.14% | 84.54% | 84.87% | −5.09 / −5.32 |
+
+Both rules put all-nonnegative triangles below their null means. Under the any-negative rule the difference largely disappears once the shuffle preserves each sender’s negative volume and each pair’s link volume. For the slides, name the rule and null alongside the fraction. [Triangle figure](figures/structural_balance.png)
+
+| Question | Result on the SNAP files |
+| --- | --- |
+| Who sends negative links? | The top 1% of senders account for 78.75% of negative links. Ranking senders by all outgoing activity gives a top-1% share of 52.10%. |
+| Does an early negative label predict another? | Among all directed pairs active before 2016, 19.28% of previously negative pairs had a later negative link, versus 2.49% of other early pairs (risk ratio 7.73). |
+| Does that association extend to neighbours? | Among later active A→C pairs, 21.57% had a negative label when A had previously linked negatively to a neighbour of C, versus 7.14% otherwise. Requiring C to have linked negatively to that intermediary gives 27.95% versus 8.97%. These rates describe temporal association. |
+| How close are targets in shared-user space? | Among 31,237 candidate targets per source, the median rank was 16,306 for negative links, 7,959 for non-negative links and 15,596 for random pairs. At one record per directed pair the sign-group medians were 18,320 and 15,251. Smaller ranks mean closer audiences. |
+| Does language generalise to unseen sources? | On 171,699 rows from 11,173 held-out sources (9.58% negative), boosted-model PR-AUC fell from 0.6434 to 0.4150 after removing nine sentiment and emotion features. Logistic PR-AUC fell from 0.5126 to 0.3287. Both models predict classifier labels. |
+| Do the embeddings agree? | Across 76,797 negative links with both representations, Spearman correlation between DeepWalk and shared-user cosine was 0.623. Giving each of the 36,573 distinct negative pairs equal weight gave 0.622. |
+| Do heavy senders and recipients bridge communities? | The top sender group had a median of 56 neighbours outside its Louvain community, and the top recipient group had 96. The median was zero among each group’s remaining nodes. Negative volume correlated with estimated betweenness (Spearman 0.368 for sending, 0.458 for receiving). |
+| How predictive are network features? | On 235,827 eligible links from 2016 onward, degree, shared-user similarity and structural community agreement yielded PR-AUC 0.1633 and average precision 0.1631 at 10.73% negative prevalence. |
+
+The full snapshot records denominators, both null distributions’ summaries, model scores, and coverage. [Results JSON](results/key_numbers.json)
+
 ## Pipeline
 
 ```mermaid
@@ -53,16 +77,17 @@ flowchart LR
 
 ## Run the analyses
 
-After setup, downloads, and completion of the ordered feature list, run from the repository root:
+Run these commands from the repository root after downloading the inputs.
 
 ```sh
 python src/00_check_data.py
 python src/01_build.py
 for script in src/0[2-8]_*.py; do python "$script" || break; done
 python src/09_export_atlas.py --reuse-projection
+python src/10_course.py
 ```
 
-The final command reuses the checked-in coordinates. Run `python src/09_export_atlas.py` to fit on the current build's matched embedding rows instead. To fit and save the full published embedding set independently:
+The Atlas exporter reuses the checked-in coordinates. Run `python src/09_export_atlas.py` to fit on the current build's matched embedding rows instead. To fit and save the full published embedding set independently:
 
 ```sh
 python src/09_export_atlas.py --projection-only \
@@ -77,14 +102,15 @@ Stochastic analyses use seed 42, with seeds 42–46 for Louvain stability. Keep 
 | --- | --- | --- |
 | 00 Data audit | — | `data_check`: rows, distinct nodes, negative shares, shared post IDs, missing vectors, property-width histogram |
 | 01 Build | — | `build`: dates, links, posts, directed pairs, labels, self-loops, and embedding coverage |
-| 02 Node statistics | `figures/lorenz_out_links.png` | `node_stats`: Gini, top 0.1% / 1% / 10% shares for outgoing negative, all outgoing, and incoming negative links, and Pearson correlation |
-| 03 Balance | `figures/structural_balance.png` | `balance`: triangle sign counts, observed balanced fractions, 1,000-shuffle means and SDs, z-scores, and independent-sign expectations |
+| 02 Node statistics | [Figure](figures/lorenz_out_links.png) | `node_stats`: Gini, top 0.1% / 1% / 10% shares for outgoing negative, all outgoing, and incoming negative links, and Pearson correlation |
+| 03 Balance | [Figure](figures/structural_balance.png) | `balance`: triangle sign counts, observed balanced fractions, 1,000-shuffle means and SDs, z-scores, and independent-sign expectations |
 | 04 Communities | — | `communities`: component size, modularity and cross-seed stability, silhouette selection, NMI and ARI, within-link shares and null differences |
-| 05 Distance | `figures/distance_densities.png` | `distance`: cosine distributions, sample sizes, KS and Cohen's d for each comparison, deduplication and degree-bin checks |
-| 06 Language | `figures/language_top_features.png` | `language`: ranked effects and bootstrap intervals, split prevalence, ROC-AUC, PR-AUC and average precision before and after sentiment removal |
-| 07 Time | `figures/monthly_negative_links.png` | `time`: calendar coverage, fraction spikes and top sender or pair contributions; monthly rows in `results/monthly_link_stats.parquet` |
-| 08 Repeat links | `figures/repeat_negative_pairs.png` | `repeat`: repeat frequency, reciprocity, neighbour and attacker rates, 500-shuffle summaries and z-scores |
+| 05 Distance | [Figure](figures/distance_densities.png) | `distance`: cosine distributions, sample sizes, KS and Cohen's d for each comparison, deduplication and degree-bin checks |
+| 06 Language | [Figure](figures/language_top_features.png) | `language`: ranked effects and bootstrap intervals, split prevalence, ROC-AUC, PR-AUC and average precision before and after sentiment removal |
+| 07 Time | [Figure](figures/monthly_negative_links.png) | `time`: calendar coverage, fraction spikes and top sender or pair contributions; monthly rows in `results/monthly_link_stats.parquet` |
+| 08 Repeat links | [Figure](figures/repeat_negative_pairs.png) | `repeat`: repeat frequency, reciprocity, neighbour and attacker rates, 500-shuffle summaries and z-scores |
 | 09 Projection and export | [`figures/embeddings_umap.png`](figures/embeddings_umap.png) | `umap`: fit settings and projected rows; `atlas`: exported nodes, months, and monthly directed pairs |
+| 10 Course extensions | [Precision–recall curve](figures/link_prediction_pr.png) | `course` contains DeepWalk comparisons, sender and recipient betweenness, and temporal link-label PR-AUC |
 
 ### How to interpret the network tests
 
@@ -96,12 +122,12 @@ flowchart LR
 ```
 
 - **Concentration** compares cumulative shares and Gini on the same node population. Negativity can appear concentrated simply because overall linking activity is concentrated.
-- **Balance** counts triangles with zero or two negative edges as balanced. The null preserves the unsigned topology and the number of negative signs. The majority and any-negative collapse rules can yield different results.
+- **Balance** counts triangles with zero or two negative edges as balanced. The global null fixes the collapsed sign total. The sender-conditioned null fixes each sender’s negative hyperlink count before collapse. The majority and any-negative collapse rules can yield different results.
 - **Within versus between** compares endpoint labels inside the largest weak component. The embedding partition covers only nodes with vectors. Report sign gaps in percentage points and check the expected values under shuffling.
 - **Distance** uses the original 300-dimensional vectors. The interactive UMAP is for visual exploration, and distances between remote regions can be distorted. Compare negative links with both neutral-or-positive links and random nodes.
 - **Language** predicts classifier labels. Closely related language features can retain predictive signal even after sentiment scores are removed. Report prevalence alongside PR performance.
 - **Time** ranks increases against the preceding UTC month and prints the denominators. Partial first or last months can affect comparisons.
-- **Repeat and neighbour tests** use co-occurrence across the observation period. A departure from the shuffled baseline says which patterns are more or less common; the test contains no chronological evidence of transmission.
+- **Repeat and neighbour tests** include pooled co-occurrence and a time-ordered comparison. The pre-2016 exposures precede their outcomes, but differences in activity and shared interests can also predict later negative links.
 
 ## Setup
 
@@ -181,7 +207,7 @@ Run after `01_build.py`. The script removes self-loops, combines the link counts
 
 A triangle is balanced under this definition when it has zero or two negative edges. For each rule, 1,000 seeded shuffles redistribute the signs among existing edges while keeping the number of negative edges fixed. The script prints the observed triangle counts, shuffle means, sample standard deviations, and z-scores for all four types. It also compares the balanced fraction with the shuffle distribution and reports an independent-sign expectation using the observed negative-edge fraction and the binomial formula.
 
-The chart in `figures/structural_balance.png` shows both rules, with error bars of one shuffle standard deviation. Numbers are saved under `balance` in `results/key_numbers.json`. A graph without triangles has no balanced fraction, and a shuffle count with zero variance has no z-score. The any-negative rule gives more active pairs more chances to receive a negative label. The shuffle preserves topology and overall sign frequency but can change each node's negative degree. Label errors and node-level clustering can therefore affect the comparison.
+The chart in `figures/structural_balance.png` shows both rules, with error bars of one shuffle standard deviation. Numbers are saved under `balance` in `results/key_numbers.json`. A graph without triangles has no balanced fraction, and a shuffle count with zero variance has no z-score. The any-negative rule gives more active pairs more chances to receive a negative label. The global shuffle preserves topology and collapsed sign frequency. A second null draws negative hyperlink slots without replacement separately for each sender among its existing outgoing links, then collapses both directions again under each rule. This preserves sender negative volume and directed pair activity. The number of negative undirected edges can vary across these draws. Label errors and node-level clustering can therefore affect the comparison.
 
 ## `src/04_communities.py`
 
@@ -203,15 +229,17 @@ The size analysis uses the sender's number of distinct neighbors as a network pr
 
 The script prints group sizes, means, medians, sample standard deviations, pairwise KS statistics, and signed Cohen's d with pooled sample standard deviations. The KS statistic describes the maximum gap between the empirical cumulative distributions. Links can share nodes, so the script reports descriptive statistics without independence-based p-values. Cohen's d is undefined when either group has fewer than two observations or the pooled variance is zero. Two panels in `figures/distance_densities.png` overlay the three normalized histograms before and after deduplication, and the numbers are stored under `distance` in `results/key_numbers.json`. The embedding proximity reflects shared user participation, and sign counts inherit classifier errors.
 
+The additional target rank orders all other hyperlink nodes with usable user embeddings by cosine similarity to the sender. Rank 1 is nearest, exact ties receive their mean rank, and self-links have no rank. See `target_rank` in the edge Parquet and in both distance summaries for comparisons with non-negative and random pairs.
+
 ## `src/06_language.py`
 
 Run `python src/06_language.py` after the build. Use the same `feature_names.txt` as the build, or pass its path with `--feature-names`. The script compares text properties on hyperlink rows with negative labels and rows with neutral-or-positive labels. It uses the difference in means divided by the pooled sample standard deviation. A positive effect means the property is higher on negative-labeled rows. It ranks all 86 features by absolute effect and prints plain-language explanations for the top 15 using the published SNAP order. [SNAP Reddit Hyperlink Network, POST_PROPERTIES](https://snap.stanford.edu/data/soc-RedditHyperlinks.html)
 
 For those 15 features, 500 bootstrap draws resample distinct post IDs with replacement and carry every row for a sampled post into the draw. The 95% percentile intervals account for repeated rows from the same post. They are descriptive intervals for selected features and do not account for ranking or dependence within subreddits. A feature with zero pooled variance has an undefined effect, and a bootstrap draw with too few rows in a class yields no estimate.
 
-The model comparison uses the same approximately stratified holdout for all fits, grouping by post ID to keep copies of a post on one side of the split. It fits scaled logistic regression and histogram gradient boosting. It reports ROC-AUC, trapezoidal PR-AUC, and average precision, with the held-out negative prevalence as the average-precision baseline. For each model it permutes features five times on a fixed, stratified sample of up to 3,000 holdout rows and reports the resulting drop in average precision. When features are correlated, permuting one can understate their joint contribution.
+The model comparison uses the same approximately stratified holdout for all fits, grouping by source subreddit so the test communities are unseen during training. The script checks that post IDs are also disjoint. It fits scaled logistic regression and histogram gradient boosting. It reports ROC-AUC, trapezoidal PR-AUC, and average precision, with the held-out negative prevalence as the average-precision baseline. For each model it permutes features five times on a fixed, stratified sample of up to 3,000 holdout rows and reports the resulting drop in average precision. When features are correlated, permuting one can understate their joint contribution.
 
-The robustness run refits both models after removing the three VADER scores and the six LIWC features for affect, positive emotion, negative emotion, anxiety, anger, and sadness. It reports how much performance changes and how the remaining average precision compares with prevalence. Predictive performance measures agreement with the published classifier labels. Other language features can still proxy for sentiment, and this split does not measure generalization to unseen subreddits or time periods.
+The robustness run refits both models after removing the three VADER scores and the six LIWC features for affect, positive emotion, negative emotion, anxiety, anger, and sadness. It reports how much performance changes and how the remaining average precision compares with prevalence. Predictive performance measures agreement with the published classifier labels. Other language features can still proxy for sentiment, and later time periods may differ from this held-out set of sources.
 
 Outputs are `data/processed/language_effects.parquet`, `data/processed/language_importances.parquet`, and `figures/language_top_features.png`. The script prints key numbers and saves them under `language` in `results/key_numbers.json`.
 
@@ -231,7 +259,7 @@ Run `python src/08_repeat.py` after the build. The script keeps parallel hyperli
 
 For every negative A→B pair, the neighbour test looks for at least one third subreddit C with a negative A→C link and any observed link between B and C. The attacker variant requires C→B to be negative. The code enumerates the undirected triangles once using igraph and retains orientations that can satisfy these conditions. A link-weighted rate gives each pair its number of negative links as weight. A pair-weighted rate gives every negative pair one vote. Multiple qualifying neighbours count as one hit on the anchor pair.
 
-The 500 seeded shuffles reassign signs over hyperlink slots and sum them back into their original pairs, preserving direction, pair multiplicities, and the network-wide number of negative labels. The script recalculates which pairs are negative and which neighbours send negative links to B after each shuffle. It reports null means, sample standard deviations, percentage-point differences, and z-scores. A rate with no negative pairs or a z-score with zero null variance is undefined. The shuffle can change each node's negative degree, so concentration around individual senders can affect the result. The test measures co-occurrence and uses no event chronology.
+The 500 seeded shuffles reassign signs over hyperlink slots and sum them back into their original pairs, preserving direction, pair multiplicities, and the network-wide number of negative labels. The script recalculates which pairs are negative and which neighbours send negative links to B after each shuffle. It reports null means, sample standard deviations, percentage-point differences, and z-scores. A rate with no negative pairs or a z-score with zero null variance is undefined. The shuffle can change each node's negative degree, so concentration around individual senders can affect the result. The pooled shuffle measures co-occurrence. The separate temporal test splits at 2016-01-01 UTC (change with `--cutoff`). For every directed pair linked before the split, compare its later risk of any negative label by early sign, counting subsequent inactivity as no later negative link. A second comparison uses only later active pairs A→C. Its three binary predictors are an early negative A→C, an early negative A→B with an early B–C link in either direction, and an early negative A→B with an early negative C→B. Each later pair counts once. Exposure and follow-up use disjoint dates. Differences in activity can influence all three risk ratios.
 
 The figure is saved to `figures/repeat_negative_pairs.png` and the frequency distribution and comparisons to `results/key_numbers.json` under `repeat`.
 
@@ -250,6 +278,14 @@ The [precomputed coordinate table](data/processed/umap_2d.parquet) contains `sub
 The UMAP figure and coordinates are included here. The other figures and statistics in the index are generated by their scripts from the two hyperlink TSVs.
 
 The Atlas distinguishes illustrative and SNAP exports. Its left rail shows dataset size and in-range negative links. Its right rail reports counts for the selected node and a pair-level breakdown with all-link denominators. The timeline and Activity calculate monthly directional counts, and date controls also filter Top Counterparts and the paginated Link Table.
+
+## Course extensions
+
+Run `python src/10_course.py` after the build. The script prints and saves all three analyses under `course` in the shared snapshot.
+
+- **Graph and audience similarity.** The script trains a 32-dimensional DeepWalk-style skip-gram embedding on the simple, unsigned, undirected hyperlink graph (seed 42, eight walks of length 20 per node, context radius three, three negative samples). Hyperlink vectors encode nearby positions on random walks. SNAP vectors encode participation by shared users. Compare cosine rankings using Spearman correlation on the same covered endpoints, weighting by link count and then giving each directed pair equal weight within each sign. The hyperlink graph includes the links under study, so this is a descriptive comparison. Vectors are saved in `data/processed/deepwalk.parquet`.
+- **Betweenness.** On the full simple graph, 256 uniformly sampled shortest-path sources estimate each node’s undirected betweenness. The script scales the estimate by the population-to-sample ratio, compares the top 1% of negative senders and recipients with the remaining nodes (including ties at the threshold), and counts neighbours outside each node’s seeded Louvain community. Degree and activity can explain part of the relationship, and sampling introduces uncertainty. See `data/processed/node_betweenness.parquet`.
+- **Predicting a negative label on an observed link.** Freeze log endpoint degrees and Louvain memberships on the pre-2015 graph, fit logistic regression on 2015 links, then evaluate on links from 2016 onward. The other predictors are shared-user cosine and whether both endpoints occupy the same structural community. Only pairs with historical endpoints and usable user vectors qualify. The SNAP vectors are supplied for the full dataset, which limits a prospective interpretation. Compare trapezoidal PR-AUC and average precision with test prevalence.
 
 ### References
 

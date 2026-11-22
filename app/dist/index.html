@@ -18,7 +18,7 @@
     <button data-view="activity">Activity</button>
     <button id="methods">Methods</button>
   </nav>
-  <span id="dataBadge" class="badge">Illustrative data</span>
+  <span id="dataBadge" class="badge">Loading atlas…</span>
 </header>
 <main class="dashboard">
   <aside class="sidebar" aria-label="Atlas controls">
@@ -26,6 +26,7 @@
       <span class="search-box"><i aria-hidden="true"></i><input id="search" list="communities" placeholder="Search subreddits..." autocomplete="off"></span>
       <datalist id="communities"></datalist>
     </label>
+    <div id="quickPicks" class="quick-picks" aria-label="Demo subreddits"></div>
     <p id="message" role="status" hidden></p>
     <section class="sidebar-section">
       <h2>Selection</h2>
@@ -33,6 +34,7 @@
         <img src="/reddit.png" width="32" height="32" alt=""><strong id="selectedName"></strong><i class="chevron" aria-hidden="true"></i>
       </button>
       <dl class="scope">
+        <dt>Group</dt><dd id="selectedGroup">—</dd>
         <dt>Scope</dt><dd>Negative-labeled links <button id="scopeInfo" aria-label="About negative labels">ⓘ</button></dd>
         <dt>Nodes</dt><dd id="nodeCount">—</dd>
         <dt>Links</dt><dd id="linkCount">—</dd>
@@ -52,8 +54,11 @@
     <section id="mapPanel" class="panel map-panel" aria-labelledby="mapTitle">
       <header class="panel-head">
         <div><h1 id="mapTitle">Embedding Atlas</h1><p id="mapNote">Subreddit hyperlinks in shared-user embedding space.</p></div>
-        <div class="legend" aria-label="Map legend"><span><b class="out">➜</b> Outgoing</span><span><b class="in">➜</b> Incoming</span><span><i class="dot"></i> Other point</span></div>
+        <div class="legend" aria-label="Map legend"><span><b class="out">➜</b> Outgoing</span><span><b class="in">➜</b> Incoming</span><span><i class="dot"></i> Group colour</span></div>
       </header>
+      <label class="group-control">Colour and group by
+        <select id="partition"><option value="3">Structural community</option><option value="4">Shared-user cluster</option></select>
+      </label>
       <div class="map-area"><canvas id="map" aria-label="Embedding scatterplot. Choose a counterpart from the list to inspect its pair."></canvas><span id="mapHover" class="tooltip" hidden></span></div>
     </section>
     <section id="timelinePanel" class="panel timeline" aria-labelledby="timeTitle">
@@ -94,6 +99,7 @@
 <dialog id="methodsDialog">
   <h2>How to read the atlas</h2>
   <p>Amber arrows point from the selected subreddit to its counterparts. Violet arrows point toward the selected subreddit. The map highlights up to 12 counterparts with embeddings; the list includes all matching counterparts.</p>
+  <p>Point colours and dossier headings show the selected grouping. Structural communities come from Louvain on the unsigned hyperlink graph. Shared-user clusters come from k-means on audience embeddings. Both partitions cover the largest weak component. Grey points have no assignment for that grouping. Dates filter links while group membership stays fixed.</p>
   <p>Nodes counts all communities in the loaded dataset. Links counts negative-labeled hyperlinks across that dataset in the selected date range. The dossier and Activity tab show links for the selected subreddit. A self-link contributes to both directional counts and once to the network-wide count.</p>
   <p>Negative fractions use all hyperlink rows in the relevant direction as the denominator. Labels come from a classifier. Months use UTC, and repeated hyperlinks count separately.</p>
   <p>New SNAP exports use a two-dimensional UMAP projection of shared-user embeddings. Earlier exports can still be loaded. The projection is best read as a guide to local neighborhoods. Communities without embeddings remain searchable. The illustrative dataset uses fictional communities and sample counts.</p>

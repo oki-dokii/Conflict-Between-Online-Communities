@@ -4,7 +4,7 @@ AIM608 project on signed, directed hyperlinks between Reddit communities.
 
 [Open the public Conflict Atlas demo](https://aim608-conflict-atlas.violet-horse-4096.chatgpt.site)
 
-The project asks where negative-labeled links go, how concentrated they are, and how those patterns relate to community structure, shared audiences, and language. The public demo opens with illustrative hyperlink records. **Load data** reads an exported SNAP file in the browser.
+The project asks where negative-labeled links go, how concentrated they are, and how those patterns relate to community structure, shared audiences, and language. The public demo opens on r/cooking with real SNAP records and structural community colours. **Load data** reads an exported SNAP file in the browser.
 
 ## Data and reported numbers
 
@@ -277,13 +277,13 @@ The figure is saved to `figures/repeat_negative_pairs.png` and the frequency dis
 
 ## Conflict Atlas demo
 
-From the project folder, serve the buildless app with `python -m http.server 8765 --bind 127.0.0.1 --directory app/dist` and open `http://127.0.0.1:8765`. The app starts with fictional communities and an **Illustrative data** badge. Search for a community, filter arrows by direction, and select a counterpart to inspect counts and negative fractions in both directions. Use the timeline brush, date presets, or month menus to narrow the period. The left sidebar shows dataset node count, negative links in the selected period, and the active dates. Activity lists monthly directional totals and rates. Top Counterparts ranks negative-labeled links, and Link Table shows paginated monthly counts per directed pair.
+From the project folder, serve the buildless app with `python -m http.server 8765 --bind 127.0.0.1 --directory app/dist` and open `http://127.0.0.1:8765`. The app loads the full SNAP export and displays the **SNAP data** badge. Use **Colour and group by** to switch between Louvain structural communities and shared-user embedding clusters. Matching group IDs share a colour on the map and a heading in the counterpart list. Unassigned nodes appear in grey. Search for a community, filter arrows by direction, and select a counterpart to inspect counts and negative fractions in both directions. Use the timeline brush, date presets, or month menus to narrow the period. The left sidebar shows dataset node count, negative links in the selected period, and the active dates. Activity lists monthly directional totals and rates. Top Counterparts ranks negative-labeled links, and Link Table shows paginated monthly counts per directed pair.
 
-After running the real build, run `python src/09_export_atlas.py --reuse-projection` (this mode reads saved coordinates and requires no UMAP installation) and select `data/processed/atlas_data.json` with **Load data**. The file is read in the browser. The exporter groups original link rows by UTC month and directed pair, retaining both negative counts and total counts. Missing embeddings leave communities without map positions, but those communities still have timelines and links.
+After the build and `04_communities.py`, run `python src/09_export_atlas.py --reuse-projection` (this mode reads saved coordinates and requires no UMAP installation) and select `data/processed/atlas_data.json` with **Load data**. To refresh the bundled dataset for publication, use `gzip -nc data/processed/atlas_data.json > app/dist/atlas-data.json.gz`. Each node stores its name, UMAP coordinates, structural community ID and embedding cluster ID. Missing assignments are JSON null. Older three-field exports still open through **Load data**. The exporter groups original link rows by UTC month and directed pair, retaining both negative counts and total counts. Missing embeddings leave communities without map positions, but those communities still have timelines and links.
 
 ### Three backup selections for the real-data demo
 
-Choose **Load data**, open the exported `data/processed/atlas_data.json`, set the time range to **All**, and search for one of these communities. Each has a saved UMAP position, negative-labeled links in both directions, and multiple months to explore. Counts below cover the full observation period.
+Choose one of the three subreddit shortcuts under Search Reddit and set the time range to **All**. Each has a saved UMAP position, negative-labeled links in both directions, and multiple months to explore. Counts below cover the full observation period.
 
 | Subreddit | Outgoing negative links | Incoming negative links | Active months with either direction | Demo use |
 | --- | ---: | ---: | ---: | --- |

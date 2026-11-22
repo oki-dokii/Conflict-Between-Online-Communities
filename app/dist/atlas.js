@@ -22,7 +22,8 @@ function parseDataset(raw) {
   }
   const names = new Set();
   for (const node of raw.nodes) {
-    if (!Array.isArray(node) || node.length !== 3 || typeof node[0] !== "string" ||
+    if (!Array.isArray(node) || ![3, 5].includes(node.length) || typeof node[0] !== "string" ||
+        !node.slice(3).every(v => v === null || Number.isSafeInteger(v) && v >= 0) ||
         !node[0].trim() || names.has(node[0]) ||
         !(Number.isFinite(node[1]) && Number.isFinite(node[2]) || node[1] === null && node[2] === null)) {
       throw new Error("Invalid or duplicate community entry.");
@@ -50,6 +51,18 @@ function install(raw) {
     if (a !== b) volumes[b] += neg;
   }
   selected = volumes.reduce((best, volume, i) => volume > volumes[best] ? i : best, 0);
+  const picks = document.createDocumentFragment();
+  for (const name of ["cooking", "books", "baseball"]) {
+    const id = data.nodes.findIndex(node => node[0] === name);
+    if (id < 0) continue;
+    if (name === "cooking") selected = id;
+    const button = document.createElement("button");
+    button.textContent = `r/${name}`;
+    button.addEventListener("click", () => selectNode(id));
+    picks.append(button);
+  }
+  $("quickPicks").replaceChildren(picks);
+  $("partition").disabled = !data.nodes.some(node => node.length === 5);
   counterpart = null;
   low = 0;
   high = data.months.length - 1;
@@ -101,12 +114,28 @@ function summarize() {
   return {peers, monthly, totals, visible};
 }
 
+function groupId(node) {
+  return node[Number($("partition").value)] ?? null;
+}
+
+function groupLabel(id) {
+  if (id === null) return "Unassigned";
+  return ($("partition").value === "3" ? "Community " : "Cluster ") + id;
+}
+
+function groupColour(id) {
+  return id === null ? "#9298aa" : `hsl(${(id * 137.508 + 171) % 360} 67% 68%)`;
+}
+
 function render() {
   if (!data) return;
   const {peers, monthly, totals, visible} = summarize();
   if (counterpart === null || !visible.some(([id]) => id === counterpart)) counterpart = visible[0]?.[0] ?? null;
   const name = `r/${data.nodes[selected][0]}`;
   $("selectedName").textContent = name;
+  const selectedGroup = groupId(data.nodes[selected]);
+  $("selectedGroup").textContent = groupLabel(selectedGroup);
+  $("selectedGroup").style.color = groupColour(selectedGroup);
   $("selection").textContent = `Negative-labeled hyperlinks sent or received by ${name}.`;
   $("timelineNote").textContent = `Monthly outgoing and incoming counts for ${name}.`;
   $("nodeCount").textContent = number(data.nodes.length);
@@ -129,29 +158,41 @@ function render() {
   $("analyticsPanel").hidden = view === "atlas";
   showPair(peers.get(counterpart));
   const list = document.createDocumentFragment();
-  for (const [key, label, icon] of [["out", "outgoing", "➜"], ["in", "incoming", "⬅"]]) {
-    if (direction !== "both" && direction !== key) continue;
-    const ordered = visible.filter(([, pair]) => pair[key].neg)
-      .sort((a, b) => b[1][key].neg - a[1][key].neg);
-    for (const [id, pair] of ordered) {
-      const button = document.createElement("button");
-      button.className = "counterpart";
-      button.setAttribute("aria-pressed", id === counterpart);
-      const arrow = document.createElement("span");
-      arrow.className = key;
-      arrow.textContent = icon;
-      arrow.setAttribute("aria-hidden", "true");
-      const caption = document.createElement("span");
-      const node = document.createElement("strong"), detail = document.createElement("small");
-      node.textContent = `r/${data.nodes[id][0]}`;
-      detail.textContent = `(${label})`;
-      caption.append(node, detail);
-      const amount = document.createElement("span");
-      amount.className = "amount";
-      amount.textContent = number(pair[key].neg);
-      button.append(arrow, caption, amount);
-      button.addEventListener("click", () => inspect(id));
-      list.append(button);
+  // The ranked pairs already respect both the date range and the direction filter.
+  const groups = new Map();
+  for (const entry of visible) {
+    const group = groupId(data.nodes[entry[0]]);
+    if (!groups.has(group)) groups.set(group, []);
+    groups.get(group).push(entry);
+  }
+  for (const [group, members] of groups) {
+    const heading = document.createElement("h4");
+    heading.className = "community-heading";
+    heading.style.borderColor = groupColour(group);
+    heading.textContent = groupLabel(group);
+    list.append(heading);
+    for (const [id, pair] of members) {
+      for (const [key, label, icon] of [["out", "outgoing", "➜"], ["in", "incoming", "⬅"]]) {
+        if (!pair[key].neg || (direction !== "both" && direction !== key)) continue;
+        const button = document.createElement("button");
+        button.className = "counterpart";
+        button.setAttribute("aria-pressed", id === counterpart);
+        const arrow = document.createElement("span");
+        arrow.className = key;
+        arrow.textContent = icon;
+        arrow.setAttribute("aria-hidden", "true");
+        const caption = document.createElement("span");
+        const node = document.createElement("strong"), detail = document.createElement("small");
+        node.textContent = `r/${data.nodes[id][0]}`;
+        detail.textContent = `(${label})`;
+        caption.append(node, detail);
+        const amount = document.createElement("span");
+        amount.className = "amount";
+        amount.textContent = number(pair[key].neg);
+        button.append(arrow, caption, amount);
+        button.addEventListener("click", () => inspect(id));
+        list.append(button);
+      }
     }
   }
   if (!visible.length) {
@@ -194,8 +235,8 @@ function drawAnalytics(visible, monthly) {
   } else if (view === "counterparts") {
     title = "Top Counterparts";
     description = "Ranked by negative-labeled links under the active direction filter.";
-    columns = ["Subreddit", "Outgoing negative", "Outgoing share", "Incoming negative", "Incoming share"];
-    records = visible.map(([id, {out, in: received}]) => [id, number(out.neg),
+    columns = ["Subreddit", "Group", "Outgoing negative", "Outgoing share", "Incoming negative", "Incoming share"];
+    records = visible.map(([id, {out, in: received}]) => [id, groupLabel(groupId(data.nodes[id])), number(out.neg),
       percent(out.neg, out.total), number(received.neg), percent(received.neg, received.total)]);
   } else {
     title = "Link Table";
@@ -354,7 +395,9 @@ function drawMap(visible) {
   ctx.save(); ctx.translate(10, (top + bottom) / 2); ctx.rotate(-Math.PI / 2);
   ctx.fillText(umap ? "UMAP 2" : "Embedding Y", 0, 0); ctx.restore(); ctx.textAlign = "left";
   const radius = plotted.length > 5000 ? 1.1 : 2;
-  for (const node of plotted) point(ctx, ...project(node), radius, "#59708e99");
+  ctx.globalAlpha = 0.48;
+  for (const node of plotted) point(ctx, ...project(node), radius, groupColour(groupId(node)));
+  ctx.globalAlpha = 1;
   if (!located) return;
   const origin = project(data.nodes[selected]);
   const candidates = visible.filter(([id]) => id !== selected && data.nodes[id][1] !== null);
@@ -365,10 +408,10 @@ function drawMap(visible) {
     const pos = project(data.nodes[id]), focused = id === counterpart;
     if (direction !== "in" && pair.out.neg) arrow(ctx, origin, pos, 1, amber, focused);
     if (direction !== "out" && pair.in.neg) arrow(ctx, pos, origin, 1, violet, focused);
-    point(ctx, ...pos, focused ? 6 : 4.4, direction !== "in" && pair.out.neg ? amber : violet);
+    point(ctx, ...pos, focused ? 6 : 4.4, groupColour(groupId(data.nodes[id])));
     mapHits.push({id, pos});
   }
-  point(ctx, ...origin, 11, "#c5a0ff44"); point(ctx, ...origin, 5.5, "#f3e6ff");
+  point(ctx, ...origin, 11, "#c5a0ff44"); point(ctx, ...origin, 7, "#fff"); point(ctx, ...origin, 5, groupColour(groupId(data.nodes[selected])));
   ctx.font = "600 13px system-ui";
   ctx.fillStyle = "#e9e2fb";
   const caption = `r/${data.nodes[selected][0]}`;
@@ -492,7 +535,7 @@ $("map").addEventListener("mousemove", event => {
   tooltip.hidden = !item;
   $("map").style.cursor = item ? "pointer" : "";
   if (item) {
-    tooltip.textContent = `r/${data.nodes[item.id][0]}`;
+    tooltip.textContent = `r/${data.nodes[item.id][0]} · ${groupLabel(groupId(data.nodes[item.id]))}`;
     tooltip.style.left = `${Math.min(event.offsetX + 10, $("map").clientWidth - tooltip.offsetWidth - 4)}px`;
     tooltip.style.top = `${Math.max(2, event.offsetY - 28)}px`;
   }
@@ -525,7 +568,13 @@ window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer
 if (location.pathname !== "/") {
   history.replaceState(null, "", "/" + location.search + location.hash);
 }
-fetch("/demo.json").then(response => {
-  if (!response.ok) throw new Error("Preview data could not be loaded.");
-  return response.json();
+$("partition").addEventListener("change", render);
+fetch("/atlas-data.json.gz").then(async response => {
+  if (!response.ok) throw new Error("SNAP data could not be loaded.");
+  const blob = await response.blob();
+  const header = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+  if (header[0] === 31 && header[1] === 139) {
+    return new Response(blob.stream().pipeThrough(new DecompressionStream("gzip"))).json();
+  }
+  return JSON.parse(await blob.text());
 }).then(raw => { if (!data) install(raw); }).catch(error => { if (!data) message(error.message); });

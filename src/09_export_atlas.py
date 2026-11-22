@@ -38,10 +38,16 @@ def project_embeddings(embeddings):
     return pd.DataFrame(xy, index=usable.index.rename("subreddit"), columns=COORDINATES)
 
 
-def build_atlas(edges, projection):
+def build_atlas(edges, projection, communities):
     names = pd.Index(sorted(set(edges["source"]) | set(edges["target"])))
     coordinates = projection.round(6).to_dict(orient="index")
-    nodes = [[name, *[coordinates.get(name, {}).get(key) for key in COORDINATES]] for name in names]
+    labels = communities.set_index("subreddit", verify_integrity=True).reindex(names)
+    nodes = []
+    for name, structural, cluster in labels[["structural_community", "embedding_cluster"]].itertuples():
+        xy = coordinates.get(name, {})
+        nodes.append([name, xy.get("umap_x"), xy.get("umap_y"),
+                      None if pd.isna(structural) else int(structural),
+                      None if pd.isna(cluster) else int(cluster)])
 
     month = edges["timestamp"].dt.tz_convert("UTC").dt.tz_localize(None).dt.to_period("M")
     calendar = pd.period_range(month.min(), month.max(), freq="M")
@@ -100,6 +106,9 @@ def main():
         edges = None if args.projection_only else load_edges(
             columns=["source", "target", "timestamp", "link_sentiment"]
         )
+        if edges is not None:
+            communities = pd.read_parquet(PROCESSED / "communities.parquet",
+                                          columns=["subreddit", "structural_community", "embedding_cluster"])
         if edges is not None and edges.empty:
             raise ValueError("The edge table contains no hyperlink rows.")
         if args.reuse_projection:
@@ -133,7 +142,7 @@ def main():
         }
         print(f"Saved {len(projection):,}/{len(embeddings):,} projected subreddits to {args.projection.resolve()}.")
     if edges is not None:
-        atlas = build_atlas(edges, projection)
+        atlas = build_atlas(edges, projection, communities)
         write_json(args.output, atlas)
         plotted = sum(node[1] is not None for node in atlas["nodes"])
         numbers = {

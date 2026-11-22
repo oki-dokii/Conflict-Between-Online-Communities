@@ -153,3 +153,8 @@ dialog::backdrop { background: #070d18ca; }
   .scope { grid-template-columns: auto 1fr; }
   .map-area { height: 300px; }
 }
+
+.quick-picks {display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.65rem}
+.quick-picks button,.group-control select {background:#18203b;color:#e6e9f6;border:1px solid #414c69;border-radius:.4rem;padding:.3rem .48rem;font:inherit;font-size:.88rem}
+.group-control {display:flex;align-items:center;gap:.6rem;color:#c0cbe0;font-size:.9rem;padding:.25rem 1rem}
+.community-heading {margin:.7rem 0 .25rem;padding:.2rem .55rem;border-left:4px solid;color:#e7edfa;font-size:.92rem}

@@ -10,8 +10,8 @@ The project asks where negative-labeled links go, how concentrated they are, and
 
 | Quantity | Value | Provenance |
 | --- | ---: | --- |
-| Subreddits in the hyperlink network | 55,863 | SNAP dataset summary |
-| Hyperlink records | 858,490 | SNAP dataset summary |
+| Subreddits in the hyperlink network | 67,180 | Measured by `01_build.py` |
+| Hyperlink records | 858,488 | Measured by `01_build.py` |
 | Published coverage | Jan 2014 to Apr 2017 | SNAP dataset summary; the build prints the exact observed UTC bounds |
 | Text properties per hyperlink record | 86 | Published property-vector layout |
 | Subreddit embedding rows | 51,278 | SNAP download and dataset summary |
@@ -20,7 +20,9 @@ The project asks where negative-labeled links go, how concentrated they are, and
 | Subreddits in the saved UMAP | 51,269 | Measured on the full SNAP embedding CSV |
 | Zero-norm vectors omitted | 9 | Measured on the full SNAP embedding CSV |
 
-The source figures above describe the published data. The negative share, duplicate-post overlap, embedding coverage on the hyperlink network, and analysis results are calculated from the actual build outputs. The UMAP-only workflow uses the embeddings CSV independently of the hyperlink TSVs. [SNAP hyperlink data](https://snap.stanford.edu/data/soc-RedditHyperlinks.html) · [SNAP embedding data](https://snap.stanford.edu/data/web-RedditEmbeddings.html)
+SNAP summarizes 55,863 subreddits and 858,490 links, while Netzschleuder reports 67,180 and 858,488 for the two files. [SNAP](https://snap.stanford.edu/data/soc-RedditHyperlinks.html) · [Netzschleuder](https://networks.skewed.de/net/reddit_hyperlinks)
+
+For slides, quote the counts printed by `01_build.py` and saved under `build.subreddit_nodes` and `build.hyperlink_rows` in the [shared results snapshot](results/key_numbers.json). The negative share, duplicate-post overlap, embedding coverage on the hyperlink network, and analysis results are calculated from the actual build outputs. The UMAP-only workflow uses the embeddings CSV independently of the hyperlink TSVs. [SNAP hyperlink data](https://snap.stanford.edu/data/soc-RedditHyperlinks.html) · [SNAP embedding data](https://snap.stanford.edu/data/web-RedditEmbeddings.html)
 
 Each row is a directed hyperlink record. Its label is −1 for negative or +1 for neutral or positive. The same post ID can contribute several rows. Text properties describe the source post; the raw post text is unavailable. Embeddings describe similarity in user participation, and label errors can affect every signed comparison. Subreddit names are dataset identifiers.
 
@@ -128,13 +130,13 @@ Use `--title`, `--body`, and `--embeddings` to override the raw file paths.
 
 The script counts link rows and distinct source-or-target subreddits by file and across both files. It divides the count of links labeled `-1` by the total number of link rows. Each distinct post ID found in both files counts once toward the overlap, and all link rows remain in the totals. Subreddit matching ignores case and surrounding whitespace. The script counts the number of comma-separated positions in every properties vector and saves the summary in a single line in `results/key_numbers.json` under `data_check`.
 
-For the feature names and their order, read **Data format → POST_PROPERTIES** on SNAP’s Reddit Hyperlink Network page. Copy the names into `feature_names.txt`, one per line in the published order. [SNAP Reddit Hyperlink Network](https://snap.stanford.edu/data/soc-RedditHyperlinks.html)
+For the feature names and their order, read **Data format → POST_PROPERTIES** on SNAP’s Reddit Hyperlink Network page. The repository includes the ordered names in `feature_names.txt`. [SNAP Reddit Hyperlink Network](https://snap.stanford.edu/data/soc-RedditHyperlinks.html)
 
 Missing files, unexpected headers, malformed rows, or unexpected sentiment labels can stop the checker. A width other than 86 is reported, and a vector of the expected width can still contain a bad value or use a different feature order. The embedding check counts fields and names. Missing embeddings limit later similarity analyses. Negative labels are classifier outputs and can be wrong. The checker reports aggregate counts without printing subreddit names.
 
 ## `src/01_build.py`
 
-Fill in all 86 lines of `feature_names.txt` in SNAP's published order before running the build. The names must be distinct and cannot match the edge metadata columns. Blank lines and lines beginning with `#` are ignored.
+The build uses the 86 entries in `feature_names.txt` in SNAP's published order. The names must be distinct and cannot match the edge metadata columns. Blank lines and lines beginning with `#` are ignored.
 
 ```sh
 python src/01_build.py
@@ -237,7 +239,7 @@ The figure is saved to `figures/repeat_negative_pairs.png` and the frequency dis
 
 From the project folder, serve the buildless app with `python -m http.server 8765 --bind 127.0.0.1 --directory app/dist` and open `http://127.0.0.1:8765`. The app starts with fictional communities and an **Illustrative data** badge. Search for a community, filter arrows by direction, and select a counterpart to inspect counts and negative fractions in both directions. Use the timeline brush, date presets, or month menus to narrow the period. The left sidebar shows dataset node count, negative links in the selected period, and the active dates. Activity lists monthly directional totals and rates. Top Counterparts ranks negative-labeled links, and Link Table shows paginated monthly counts per directed pair.
 
-After running the real build, run `python src/09_export_atlas.py --reuse-projection` and select `data/processed/atlas_data.json` with **Load data**. The file is read in the browser. The exporter groups original link rows by UTC month and directed pair, retaining both negative counts and total counts. Missing embeddings leave communities without map positions, but those communities still have timelines and links.
+After running the real build, run `python src/09_export_atlas.py --reuse-projection` (this mode reads saved coordinates and requires no UMAP installation) and select `data/processed/atlas_data.json` with **Load data**. The file is read in the browser. The exporter groups original link rows by UTC month and directed pair, retaining both negative counts and total counts. Missing embeddings leave communities without map positions, but those communities still have timelines and links.
 
 ## `src/09_export_atlas.py`
 
@@ -245,7 +247,7 @@ The [precomputed coordinate table](data/processed/umap_2d.parquet) contains `sub
 
 ![Seeded 2D UMAP scatterplot of 51,269 SNAP subreddit embeddings](figures/embeddings_umap.png)
 
-The UMAP figure and coordinates are included here. The other figures and statistics in the index are generated by their scripts once the hyperlink TSVs and populated feature list are available.
+The UMAP figure and coordinates are included here. The other figures and statistics in the index are generated by their scripts from the two hyperlink TSVs.
 
 The Atlas distinguishes illustrative and SNAP exports. Its left rail shows dataset size and in-range negative links. Its right rail reports counts for the selected node and a pair-level breakdown with all-link denominators. The timeline and Activity calculate monthly directional counts, and date controls also filter Top Counterparts and the paginated Link Table.
 

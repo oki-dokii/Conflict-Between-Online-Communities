@@ -12,7 +12,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from umap import UMAP
 
 from common import FIGURES, PROCESSED, RESULTS, SEED, load_edges, load_embeddings, read_raw_embeddings
 
@@ -23,6 +22,8 @@ COORDINATES = ["umap_x", "umap_y"]
 
 
 def project_embeddings(embeddings):
+    from umap import UMAP
+
     embeddings = embeddings.sort_index()
     usable = embeddings.loc[np.linalg.norm(embeddings.to_numpy(), axis=1) > 0]
     if len(usable) < 3:

@@ -75,7 +75,7 @@ def shuffle_senders(slots, starts, negatives, totals, triangles, draws, seed):
     return counts
 
 
-def sender_null(pairs, graph, triangles):
+def sender_null(pairs, graph, triangles, draws=SHUFFLES):
     links = pairs.loc[pairs.source != pairs.target].sort_values(["source", "target"]).copy()
     links["capacity"] = links.n_pos + links.n_neg
     grouped = links.groupby("source", sort=False)[["capacity", "n_neg"]].sum()
@@ -84,7 +84,7 @@ def sender_null(pairs, graph, triangles):
     slots = np.repeat(graph.get_eids(endpoints), links.capacity.to_numpy()).astype(np.int64)
     starts = np.r_[0, grouped.capacity.cumsum()].astype(np.int64)
     totals = np.asarray(graph.es["n_pos"]) + np.asarray(graph.es["n_neg"])
-    return shuffle_senders(slots, starts, grouped.n_neg.to_numpy(), totals, triangles, SHUFFLES, SEED)
+    return shuffle_senders(slots, starts, grouped.n_neg.to_numpy(), totals, triangles, draws, SEED)
 
 
 def summarize_null(signs, triangle_edges, null):
@@ -197,7 +197,12 @@ def explain(label, stats):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.parse_args()
+    parser.add_argument("--dev-shuffles", type=int, metavar="N",
+                        help="Run a shorter shuffle check and print results only.")
+    args = parser.parse_args()
+    draws = SHUFFLES if args.dev_shuffles is None else args.dev_shuffles
+    if not 2 <= draws <= SHUFFLES:
+        parser.error(f"Use between 2 and {SHUFFLES} shuffles.")
     try:
         pairs = load_pairs(columns=["source", "target", "n_pos", "n_neg"])
     except FileNotFoundError as error:
@@ -211,13 +216,13 @@ def main():
         "Any negative link": n_neg > 0,
         "Majority negative": n_neg > n_pos,
     }
-    conditioned = sender_null(pairs, graph, triangles)
+    conditioned = sender_null(pairs, graph, triangles, draws)
     results = {}
     for index, (label, negative) in enumerate(rules.items()):
         signs = negative.astype(np.int8)
         rng = np.random.default_rng(SEED)
         global_null = np.array([count_types(rng.permutation(signs), triangles)
-                                for _ in range(SHUFFLES)])
+                                for _ in range(draws)])
         stats = summarize_null(signs, triangles, global_null)
         stats["sender_conditioned"] = summarize_null(signs, triangles, conditioned[index])
         results[label] = stats
@@ -227,18 +232,21 @@ def main():
         "triangles": triangles.shape[1],
         "excluded_self_loop_pairs": int(pairs["source"].eq(pairs["target"]).sum()),
         "majority_ties_labeled_nonnegative": int((n_pos == n_neg).sum()),
-        "shuffles_per_rule": SHUFFLES,
+        "shuffles_per_rule": draws,
         "any_negative": results["Any negative link"],
         "majority_negative": results["Majority negative"],
     }
 
-    FIGURES.mkdir(parents=True, exist_ok=True)
-    RESULTS.mkdir(parents=True, exist_ok=True)
-    plot_counts(results, FIGURES / "structural_balance.png")
-    save_numbers("balance", numbers)
+    if args.dev_shuffles is None:
+        FIGURES.mkdir(parents=True, exist_ok=True)
+        RESULTS.mkdir(parents=True, exist_ok=True)
+        plot_counts(results, FIGURES / "structural_balance.png")
+        save_numbers("balance", numbers)
+    else:
+        print(f"Development run: {draws} shuffles, console output only.")
 
     print(f"{graph.vcount():,} nodes, {graph.ecount():,} undirected edges, "
-          f"{triangles.shape[1]:,} triangles, {SHUFFLES:,} shuffles per rule.")
+          f"{triangles.shape[1]:,} triangles, {draws:,} shuffles per rule.")
     print(f"Excluded {numbers['excluded_self_loop_pairs']:,} self-loop pairs. "
           f"Majority rule assigns {numbers['majority_ties_labeled_nonnegative']:,} ties "
           "to the nonnegative sign.")

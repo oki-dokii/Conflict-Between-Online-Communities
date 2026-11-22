@@ -96,6 +96,18 @@ python src/09_export_atlas.py --projection-only \
 
 Stochastic analyses use seed 42, with seeds 42–46 for Louvain stability. Keep dependency versions fixed when comparing results across machines. Run the pipeline sequentially so each stage can update the shared one-line JSON summary. Undefined statistics are represented as missing values or JSON `null`.
 
+### Real-data runtime and memory
+
+The full run used 571,927 title rows, 286,561 body rows and 51,278 embedding rows. These are elapsed times and peak process resident memory from one sequential run on Apple silicon with Python 3.11.15. They include loading inputs and writing results. Runtime and memory use can vary across machines and library versions.
+
+| Script | Final settings | Elapsed | Peak resident memory |
+| --- | --- | ---: | ---: |
+| `03_balance.py` | 1,000 draws per null and collapse rule, 2,405,288 triangles | 51.8 s | 0.83 GiB |
+| `08_repeat.py` | 500 fixed-structure sign shuffles and the 2016 split | 31.1 s | 0.86 GiB |
+| `06_language.py` | 858,488 rows × 86 features, 500 bootstrap draws, both models and both feature sets | 89.1 s | 1.69 GiB |
+
+Budget several GiB of available RAM for the language analysis and run it on its own on memory-constrained machines. The 86 float64 columns alone occupy about 0.55 GiB before model copies and working arrays. For faster iteration, `python src/03_balance.py --dev-shuffles 10` and `python src/08_repeat.py --dev-shuffles 10` print development estimates. Run each script with its default shuffle count to write final figures and the shared results snapshot.
+
 ## Figures and statistics index
 
 | Stage | PNG figure | What to read in `results/key_numbers.json` |
@@ -268,6 +280,18 @@ The figure is saved to `figures/repeat_negative_pairs.png` and the frequency dis
 From the project folder, serve the buildless app with `python -m http.server 8765 --bind 127.0.0.1 --directory app/dist` and open `http://127.0.0.1:8765`. The app starts with fictional communities and an **Illustrative data** badge. Search for a community, filter arrows by direction, and select a counterpart to inspect counts and negative fractions in both directions. Use the timeline brush, date presets, or month menus to narrow the period. The left sidebar shows dataset node count, negative links in the selected period, and the active dates. Activity lists monthly directional totals and rates. Top Counterparts ranks negative-labeled links, and Link Table shows paginated monthly counts per directed pair.
 
 After running the real build, run `python src/09_export_atlas.py --reuse-projection` (this mode reads saved coordinates and requires no UMAP installation) and select `data/processed/atlas_data.json` with **Load data**. The file is read in the browser. The exporter groups original link rows by UTC month and directed pair, retaining both negative counts and total counts. Missing embeddings leave communities without map positions, but those communities still have timelines and links.
+
+### Three backup selections for the real-data demo
+
+Choose **Load data**, open the exported `data/processed/atlas_data.json`, set the time range to **All**, and search for one of these communities. Each has a saved UMAP position, negative-labeled links in both directions, and multiple months to explore. Counts below cover the full observation period.
+
+| Subreddit | Outgoing negative links | Incoming negative links | Active months with either direction | Demo use |
+| --- | ---: | ---: | ---: | --- |
+| r/cooking | 6 | 25 | 21 | Start here for a smaller map. All 6 outgoing and 13 incoming counterparts have map coordinates. |
+| r/books | 11 | 152 | 39 | Compare the two directions in the dossier. Incoming links come from 77 distinct counterparts. |
+| r/baseball | 8 | 145 | 39 | Brush the longer timeline and compare monthly counts with the full-period totals. |
+
+These names identify endpoints in SNAP. A negative count records a classifier label on a hyperlink.
 
 ## `src/09_export_atlas.py`
 

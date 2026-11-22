@@ -77,7 +77,7 @@ def rates(n_neg, reverse, motifs):
     }
 
 
-def compare_null(n_neg, n_total, reverse, motifs):
+def compare_null(n_neg, n_total, reverse, motifs, draws=SHUFFLES):
     observed = rates(n_neg, reverse, motifs)
     if observed is None:
         return None
@@ -86,8 +86,8 @@ def compare_null(n_neg, n_total, reverse, motifs):
     starts = np.cumsum(n_total) - n_total
     signs = np.arange(int(n_total.sum())) < int(n_neg.sum())
     rng = np.random.default_rng(SEED)
-    null = {name: np.empty(SHUFFLES) for name in observed}
-    for draw in range(SHUFFLES):
+    null = {name: np.empty(draws) for name in observed}
+    for draw in range(draws):
         rng.shuffle(signs)
         shuffled_neg = np.add.reduceat(signs, starts, dtype=np.int64)
         shuffled = rates(shuffled_neg, reverse, motifs)
@@ -205,7 +205,12 @@ def temporal_test(edges, cutoff):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cutoff", default="2016-01-01", help="Start of follow-up (UTC)")
+    parser.add_argument("--dev-shuffles", type=int, metavar="N",
+                        help="Run a shorter shuffle check and print results only.")
     args = parser.parse_args()
+    draws = SHUFFLES if args.dev_shuffles is None else args.dev_shuffles
+    if not 2 <= draws <= SHUFFLES:
+        parser.error(f"Use between 2 and {SHUFFLES} shuffles.")
     cutoff = pd.to_datetime(args.cutoff, utc=True)
     temporal = temporal_test(load_edges(columns=["source", "target", "link_sentiment", "timestamp"]), cutoff)
     print("Time-ordered directed-pair risks:", json.dumps(temporal), flush=True)
@@ -222,20 +227,23 @@ def main():
     n_pairs = int(frequencies.sum())
     repeated = int(frequencies[counts >= 2].sum())
     reverse, motifs, triangles = pair_topology(links)
-    comparisons = compare_null(negative, totals, reverse, motifs)
+    comparisons = compare_null(negative, totals, reverse, motifs, draws)
     numbers = {
         "directed_pairs": len(links), "negative_directed_pairs": n_pairs,
         "negative_links": int(negative.sum()), "excluded_self_loop_pairs": int(loops.sum()),
         "pairs_with_two_or_more": repeated,
         "repeat_share": repeated / n_pairs if n_pairs else None,
         "negative_links_per_pair_distribution": dict(zip(map(int, counts), map(int, frequencies))),
-        "undirected_triangles": triangles, "shuffles": SHUFFLES if comparisons is not None else 0,
+        "undirected_triangles": triangles, "shuffles": draws if comparisons is not None else 0,
         "comparisons": comparisons, "temporal": temporal,
     }
-    FIGURES.mkdir(parents=True, exist_ok=True)
-    RESULTS.mkdir(parents=True, exist_ok=True)
-    plot_repeats(counts, frequencies, FIGURES / "repeat_negative_pairs.png")
-    save_numbers("repeat", numbers)
+    if args.dev_shuffles is None:
+        FIGURES.mkdir(parents=True, exist_ok=True)
+        RESULTS.mkdir(parents=True, exist_ok=True)
+        plot_repeats(counts, frequencies, FIGURES / "repeat_negative_pairs.png")
+        save_numbers("repeat", numbers)
+    else:
+        print(f"Development run: {draws} shuffles, console output only.")
 
     print(f"{len(links):,} directed pairs, {n_pairs:,} with negative links. "
           f"Excluded {numbers['excluded_self_loop_pairs']:,} self-loop pairs.")
